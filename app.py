@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # -*- coding: utf-8 -*-
 """
-Visual Director v19.7｜Hybrid News Director 合體版
+Visual Director v19.5｜結論模組導演完整版
 
 重點：
 1. 保留 Gemini API 串接
@@ -37,7 +37,7 @@ NL = chr(10)
 # 0. Streamlit 基本設定
 # =========================================================
 st.set_page_config(
-    page_title="Visual Director v19.7｜Hybrid News Director 合體版",
+    page_title="Visual Director v19.5｜結論模組導演完整版",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -108,56 +108,6 @@ STYLE_CONFIG: Dict[str, Dict[str, str]] = {
         "highlight": "Bright Sky Blue",
     },
 }
-
-
-# =========================================================
-# 1-2. v19.7 Hybrid Vibe 混色引擎
-# =========================================================
-EMOTION_CONFIG: Dict[str, Dict[str, object]] = {
-    "突發重磅": {"words": ["突發", "重磅", "快訊", "最新", "震撼", "直擊", "驚"], "base_color": "#401010", "weight": 1.5},
-    "社會案件": {"words": ["弊案", "偵辦", "搜索", "命案", "法庭", "疑雲", "北檢", "霸凌", "偷拍", "申訴"], "base_color": "#1A1A1A", "weight": 1.2},
-    "全球財經": {"words": ["漲跌", "美股", "台股", "權重", "半導體", "營收", "崩跌", "營業額", "日圓", "億"], "base_color": "#001F3F", "weight": 1.0},
-    "科技政策": {"words": ["AI", "晶片", "數位", "算力", "新制", "政策", "科技", "太空", "阿提米絲"], "base_color": "#003333", "weight": 1.1},
-    "民生消費": {"words": ["美食", "旅遊", "消費", "百貨", "熱門", "避風港", "打卡", "黃金週", "商場"], "base_color": "#18202B", "weight": 0.8},
-    "選情政論": {"words": ["議員", "市長", "民眾黨", "國民黨", "立院", "柯", "賴清德", "陳智菡"], "base_color": "#2C3440", "weight": 1.0},
-}
-
-
-def hex_to_rgb(hex_color: str) -> Tuple[int, int, int]:
-    value = hex_color.lstrip("#")
-    return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
-
-
-def rgb_to_hex(rgb: Tuple[int, int, int]) -> str:
-    return "#%02x%02x%02x" % rgb
-
-
-def blend_colors(color1: str, color2: str, ratio: float) -> str:
-    ratio = max(0.0, min(1.0, ratio))
-    rgb1 = hex_to_rgb(color1)
-    rgb2 = hex_to_rgb(color2)
-    mixed = tuple(int(rgb1[i] + (rgb2[i] - rgb1[i]) * ratio) for i in range(3))
-    return rgb_to_hex(mixed)
-
-
-def calculate_vibe_palette(script: str, intensity: float) -> Dict[str, str]:
-    scores = {name: 0.0 for name in EMOTION_CONFIG.keys()}
-    for name, cfg in EMOTION_CONFIG.items():
-        words = cfg["words"]  # type: ignore[index]
-        weight = float(cfg["weight"])  # type: ignore[index]
-        scores[name] = sum(script.count(str(word)) for word in words) * weight
-
-    sorted_scores = sorted(scores.items(), key=lambda item: item[1], reverse=True)
-    primary, primary_score = sorted_scores[0]
-    secondary, secondary_score = sorted_scores[1]
-    total = primary_score + secondary_score
-
-    if total <= 0:
-        return {"bg": "#18202B", "primary": "中性", "secondary": "無", "ratio": "100/0"}
-
-    ratio = (secondary_score / total) * max(0.0, min(1.0, intensity))
-    final_bg = blend_colors(str(EMOTION_CONFIG[primary]["base_color"]), str(EMOTION_CONFIG[secondary]["base_color"]), ratio)
-    return {"bg": final_bg, "primary": primary, "secondary": secondary, "ratio": f"{int((1-ratio)*100)}/{int(ratio*100)}"}
 
 
 # =========================================================
@@ -339,11 +289,13 @@ def detect_conclusion_module(script: str, frame_type: str, reporter_subtype: str
 
 
 def auto_detect_frame_type(script: str) -> str:
-    """v19.7：版型優先順序＝記者說新聞 → 框訊 → 標大框。"""
+    """自動判斷版型大類。優先順序：記者說新聞 → 框訊 → 標大框。"""
     s = script.lower()
     image_count = _count_image_intents(script)
+
     if is_reporter_news(script):
         return "記者說新聞"
+
     if _contains_any(script, ["評審", "委員", "利益迴避", "所屬公司", "關係", "節點", "招標", "異議", "暫緩公告"]):
         return "框訊・流程關係"
     if _contains_any(s, ["vs", "v.s", "對比", "比較", "工法", "差異", "價差", "破碎", "切割", "圖利"]):
@@ -403,17 +355,20 @@ def auto_patch_missing_image_zones(script: str, frame_type: str) -> str:
 def build_director_report(script: str) -> Dict[str, str]:
     frame = auto_detect_frame_type(script)
     subtype = detect_reporter_subtype(script) if frame == "記者說新聞" else "非記者說新聞"
+    density = density_score(script)
+    tone = auto_detect_tone(script, frame)
     conclusion = detect_conclusion_module(script, frame, subtype)
     return {
         "frame_type": frame,
         "reporter_subtype": subtype,
         "style_name": auto_detect_style(script),
         "headline_mode": "手動選擇",
-        "density": density_score(script),
-        "tone": auto_detect_tone(script, frame),
+        "density": density,
+        "tone": tone,
         "conclusion_type": conclusion["type"],
         "conclusion_sentence": conclusion["sentence"],
         "conclusion_position": conclusion["position"],
+        "safe_zone": "啟用" if auto_should_safe_zone(script, frame) else "不啟用",
     }
 
 
@@ -463,7 +418,7 @@ def run_self_tests() -> List[str]:
     assert "主畫面" in patched
     results.append("自動補圖區 OK")
 
-    prompt, parsed = build_final_prompt_v19_7(
+    prompt, parsed = build_final_prompt_v18(
         script=patched,
         frame_type="標大框",
         style_name="社會案件 (Justice Alert)",
@@ -474,7 +429,7 @@ def run_self_tests() -> List[str]:
         ai_color=True,
         notes="測試",
     )
-    assert "VISUAL DIRECTOR v19.7" in prompt
+    assert "VISUAL DIRECTOR v18" in prompt
     assert "[圖-右主]" in prompt
     assert "TOP HEADLINE LOCK" in prompt
     assert parsed.image_tags
@@ -758,7 +713,7 @@ Detected Modules:
 """.strip()
 
 
-def build_final_prompt_v19_7(
+def build_final_prompt_v18(
     script: str,
     frame_type: str,
     style_name: str,
@@ -769,7 +724,6 @@ def build_final_prompt_v19_7(
     ai_color: bool,
     notes: str,
     reporter_subtype_override: str = "",
-    vibe_intensity: float = 0.5,
 ) -> Tuple[str, ParsedInput]:
     parsed = parse_user_script(script)
     style = STYLE_CONFIG[style_name]
@@ -796,15 +750,14 @@ Do not leave unnecessary empty space above it; fill content downward until Y=990
     )
 
     icon_logic = "3D Volumetric / PBR-like depth" if icon_style == "3D" else "Flat 2D clean vector"
-    vibe = calculate_vibe_palette(script, vibe_intensity)
     color_logic = (
-        f"HYBRID VIBE: {vibe['bg']} | Primary: {vibe['primary']} | Secondary: {vibe['secondary']} | Ratio: {vibe['ratio']} | Headline sentiment: {clean_inline_text(parsed.title)}"
+        f"Dynamic contextual color based on headline sentiment: {clean_inline_text(parsed.title)}"
         if ai_color
         else f"Fixed palette: {style['palette']} | Highlight: {style['highlight']}"
     )
 
     prompt = f"""
-[VISUAL DIRECTOR v19.7 HYBRID NEWS DIRECTOR | BROADCAST NEWS CG]
+[VISUAL DIRECTOR v18 DIRECTOR SYSTEM | BROADCAST NEWS CG]
 CANVAS: 1920x1080 Full HD
 LANGUAGE: Traditional Chinese ONLY
 
@@ -814,7 +767,6 @@ THEME: {style['theme']}
 UI TEXTURE: {style['ui']}
 ICON STYLE: {icon_logic}
 COLOR STRATEGY: {color_logic}
-VIBE_STRESS: {vibe_intensity}
 
 {safe_zone_text}
 
@@ -834,7 +786,7 @@ Layout mode: {layout_mode}
 
 {build_layout_diagnostics(parsed, frame_type)}
 
-[v19.7 DIRECTOR DECISION]
+[v19.5 DIRECTOR DECISION]
 - Frame Type: {frame_type}
 - Reporter Subtype: {reporter_subtype_override if frame_type == '記者說新聞' and reporter_subtype_override else (detect_reporter_subtype(script) if frame_type == '記者說新聞' else 'N/A')}
 - Information Density: {density_score(script)}
@@ -1311,8 +1263,8 @@ HOLE_PUNCHER_V66 = r"""
 # =========================================================
 # 8. UI
 # =========================================================
-st.title("🎬 Visual Director v19.7｜Hybrid News Director 合體版")
-st.caption("v19.7：Hybrid Vibe 混色＋記者說新聞子類型＋結論模組＋真版型 CG 預覽＋不壓圖規則")
+st.title("🎬 Visual Director v19.5｜結論模組導演完整版")
+st.caption("API 串接＋版型/子類型/密度/語氣判斷＋安全區防呆＋CG預覽＋完整打洞機 v66｜Producer Huifen Edition")
 
 with st.sidebar:
     st.header("🔑 Gemini API")
@@ -1328,10 +1280,6 @@ with st.sidebar:
         type="password",
         placeholder="如果 Render 已設定，這裡不用填",
     )
-
-    st.divider()
-    st.header("🧬 Hybrid Vibe")
-    vibe_stress = st.slider("情緒混色強度", 0.0, 1.0, 0.5, 0.05)
 
     st.divider()
     st.header("🎛️ 預設規格")
@@ -1375,7 +1323,7 @@ with st.expander("📘 v17 圖區不壓圖規則", expanded=False):
 
 tab_ai, tab_prompt, tab_hole = st.tabs([
     "🤖 AI 拆稿",
-    "🎬 v19.7 導演系統",
+    "🎬 v19.5 導演系統",
     "🖍️ 華視打洞機",
 ])
 
@@ -1405,7 +1353,7 @@ with tab_ai:
 
 
 with tab_prompt:
-    st.subheader("🎬 v19.7 Hybrid 導演系統＋結論模組＋最終產圖指令")
+    st.subheader("🎬 v19.5 導演系統＋結論模組＋最終產圖指令")
 
     c1, c2 = st.columns([1.25, 0.75])
 
@@ -1474,11 +1422,7 @@ with tab_prompt:
 
         layout_mode = st.radio("排版模式", ["GRID", "DYNAMIC"], horizontal=True)
         icon_style = st.radio("ICON 質感", ["2D", "3D"], index=1, horizontal=True)
-        ai_color = st.toggle("Hybrid Vibe 混色：依新聞情緒配色", value=True)
-        vibe_now = calculate_vibe_palette(script_for_prompt if 'script_for_prompt' in locals() else script, vibe_stress)
-        st.markdown("### 🧬 Vibe 混色報告")
-        st.color_picker("自動導出底色", vibe_now["bg"], disabled=True)
-        st.caption(f"Primary: {vibe_now['primary']}｜Secondary: {vibe_now['secondary']}｜Ratio: {vibe_now['ratio']}")
+        ai_color = st.toggle("AI 視覺主權：依新聞情緒配色", value=True)
         if frame_type == "記者說新聞":
             use_safe_zone = True
             st.warning("記者說新聞：右下跑馬安全區 588×90 已強制鎖定，不能關閉。")
@@ -1491,7 +1435,7 @@ with tab_prompt:
 
         notes = st.text_area("補充導演備註", value="所有圖區都要留白，後製會塞真實照片；文字絕對不能壓到圖。", height=110)
 
-    final_prompt, parsed = build_final_prompt_v19_7(
+    final_prompt, parsed = build_final_prompt_v18(
         script=script_for_prompt,
         frame_type=frame_type,
         style_name=style_name,
@@ -1502,7 +1446,6 @@ with tab_prompt:
         ai_color=ai_color,
         notes=notes,
         reporter_subtype_override=reporter_subtype,
-        vibe_intensity=vibe_stress,
     )
 
     st.divider()
@@ -1514,7 +1457,7 @@ with tab_prompt:
             for tag in parsed.image_tags:
                 st.code(tag, language="text")
         else:
-            st.warning("沒有偵測到明確圖區。若要後製塞圖，請加 [圖-後製塞圖] 。")
+            st.warning("沒有偵測到明確圖區。若要後製塞圖，請加 [圖-左主] / [圖-右主]。")
 
     with diag_r:
         st.markdown("### 🧩 偵測到的模組")
@@ -1529,7 +1472,7 @@ with tab_prompt:
         for warning in parsed.warnings:
             st.warning(warning)
 
-    st.markdown("### 🧪 v19.7 防呆檢查")
+    st.markdown("### 🧪 v19.5 防呆檢查")
     for item in build_quality_check(parsed, frame_type, reporter_subtype, use_safe_zone):
         st.checkbox(item, value=True, disabled=True)
 
@@ -1553,7 +1496,6 @@ with tab_prompt:
         director["conclusion_type"] = conclusion["type"]
         director["conclusion_sentence"] = conclusion["sentence"]
         director["conclusion_position"] = conclusion["position"]
-        director["vibe"] = calculate_vibe_palette(script_for_prompt, vibe_stress)
         st.json(director)
     st.code(final_prompt, language="markdown")
 
