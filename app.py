@@ -2,13 +2,13 @@ from __future__ import annotations
 
 # -*- coding: utf-8 -*-
 """
-Visual Director v19.5｜結論模組導演完整版
+Visual Director v19.6｜防亂生文字版
 
 重點：
 1. 保留 Gemini API 串接
 2. 保留框訊模板庫
 3. 保留完整 HOLE_PUNCHER_V66，不簡化
-4. v19.5 導演系統：自動判斷版型大類、記者說新聞子類型、風格、密度、語氣、必要圖區
+4. v19.6 導演系統：自動判斷版型大類、記者說新聞子類型、風格、密度、語氣、必要圖區
 5. 結論模組：自動偵測結論句，判斷筆刷 / 蓋章 / 不使用，並給出安全位置
 6. 記者說新聞子類型可手動覆寫，並直接影響 CG preview 與 prompt
 7. 加入安全區硬邊界、資訊密度控制、視覺層級、結論模組、防呆檢查
@@ -32,12 +32,22 @@ except Exception:
 
 NL = chr(10)
 
+STRICT_NO_EXTRA_FACTS = """
+【防亂生文字規則｜絕對遵守】
+- 嚴禁新增使用者未提供的人名、地名、機構名、數字、日期、事件、背景、原因、結論。
+- 嚴禁為了畫面好看而補寫新聞內容、補標題、補小標、補說法。
+- 只能重排、精簡、分類、標註使用者原文中已存在的資訊。
+- 若原文沒有的資訊，請留空或使用「未提供」，不得自行推測。
+- [圖]、[圖-xxx]、(#定xxx)、(定xxx圖) 只代表留白圖區，不得替它補照片說明文字。
+"""
+
+
 
 # =========================================================
 # 0. Streamlit 基本設定
 # =========================================================
 st.set_page_config(
-    page_title="Visual Director v19.5｜結論模組導演完整版",
+    page_title="Visual Director v19.6｜防亂生文字版",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -212,7 +222,7 @@ def auto_detect_tone(script: str, frame_type: str) -> str:
 
 
 def extract_conclusion_candidates(script: str) -> List[str]:
-    """v19.5：抓可能適合當結論模組的句子。優先找筆刷/蓋章標記，其次找最後短強句。"""
+    """v19.6：抓可能適合當結論模組的句子。優先找筆刷/蓋章標記，其次找最後短強句。"""
     candidates: List[str] = []
     lines = [line.strip() for line in script.splitlines() if line.strip()]
 
@@ -242,7 +252,7 @@ def extract_conclusion_candidates(script: str) -> List[str]:
 
 
 def detect_conclusion_module(script: str, frame_type: str, reporter_subtype: str = "") -> Dict[str, str]:
-    """v19.5：自動判斷結論模組類型與安全位置。"""
+    """v19.6：自動判斷結論模組類型與安全位置。"""
     candidates = extract_conclusion_candidates(script)
     sentence = candidates[0] if candidates else ""
 
@@ -382,7 +392,7 @@ def build_quality_check(parsed: ParsedInput, frame_type: str, reporter_subtype: 
     if frame_type == "記者說新聞":
         checks.append(f"記者說新聞子類型：{reporter_subtype}，允許較高資訊密度但不可壓安全區")
     checks.append("視覺層級：主標 300%，小標 160%，內文 100%")
-    checks.append("v19.5 結論模組：筆刷/蓋章只能放在背景或卡片外緣，不可壓圖、人物、表格與跑馬")
+    checks.append("v19.6 結論模組：筆刷/蓋章只能放在背景或卡片外緣，不可壓圖、人物、表格與跑馬")
     return checks
 
 
@@ -411,7 +421,7 @@ def run_self_tests() -> List[str]:
     conclusion = detect_conclusion_module(case_conclusion, "記者說新聞", "左右解釋型")
     assert conclusion["type"] == "蓋章"
     assert "沖繩" in conclusion["sentence"]
-    results.append("v19.5 結論模組判斷 OK")
+    results.append("v19.6 結論模組判斷 OK")
 
     patched = auto_patch_missing_image_zones("標:測試新聞", "標大框")
     assert "[圖-右主]" in patched
@@ -471,6 +481,7 @@ def generate_ai_frame_content(news_text: str, frame_type: str, api_key: str) -> 
 
 【最重要原則】
 AI 只負責內容拆解，不得破壞版面安全。
+{STRICT_NO_EXTRA_FACTS}
 所有 [圖]、[圖-xxx]、(#定xxx)、(定xxx圖) 都代表後製真實圖片區。
 這些標籤在輸入稿階段要保留，讓系統知道要留空；但最終成品必須刪除標籤文字。
 
@@ -501,7 +512,7 @@ AI 只負責內容拆解，不得破壞版面安全。
         )
         response = model.generate_content(
             f"請整理這則新聞稿：{NL}{NL}{news_text}",
-            generation_config=genai.types.GenerationConfig(temperature=0.45),
+            generation_config=genai.types.GenerationConfig(temperature=0.05),
         )
         return response.text.strip()
     except Exception as e:
@@ -786,7 +797,7 @@ Layout mode: {layout_mode}
 
 {build_layout_diagnostics(parsed, frame_type)}
 
-[v19.5 DIRECTOR DECISION]
+[v19.6 DIRECTOR DECISION]
 - Frame Type: {frame_type}
 - Reporter Subtype: {reporter_subtype_override if frame_type == '記者說新聞' and reporter_subtype_override else (detect_reporter_subtype(script) if frame_type == '記者說新聞' else 'N/A')}
 - Information Density: {density_score(script)}
@@ -799,6 +810,7 @@ Layout mode: {layout_mode}
 - Conclusion module must be placed outside all image zones and outside ticker safe zone.
 
 [FINAL IMAGE RESTRICTIONS - CRITICAL]
+{STRICT_NO_EXTRA_FACTS.strip()}
 - DELETE ALL literal instruction tags, including [圖], [圖-xxx], (#定xxx), (色塊), (對話框), #筆刷.
 - DELETE ALL double quotes and angle brackets after applying visual emphasis.
 - Every detected image placeholder must become a clean empty protected zone for real post-production photos.
@@ -1263,7 +1275,7 @@ HOLE_PUNCHER_V66 = r"""
 # =========================================================
 # 8. UI
 # =========================================================
-st.title("🎬 Visual Director v19.5｜結論模組導演完整版")
+st.title("🎬 Visual Director v19.6｜防亂生文字版")
 st.caption("API 串接＋版型/子類型/密度/語氣判斷＋安全區防呆＋CG預覽＋完整打洞機 v66｜Producer Huifen Edition")
 
 with st.sidebar:
@@ -1288,7 +1300,7 @@ with st.sidebar:
 
     st.divider()
     st.header("🧪 本機測試")
-    if st.button("執行 v19.5 導演系統測試"):
+    if st.button("執行 v19.6 導演系統測試"):
         try:
             for message in run_self_tests():
                 st.success(message)
@@ -1323,7 +1335,7 @@ with st.expander("📘 v17 圖區不壓圖規則", expanded=False):
 
 tab_ai, tab_prompt, tab_hole = st.tabs([
     "🤖 AI 拆稿",
-    "🎬 v19.5 導演系統",
+    "🎬 v19.6 導演系統",
     "🖍️ 華視打洞機",
 ])
 
@@ -1353,24 +1365,41 @@ with tab_ai:
 
 
 with tab_prompt:
-    st.subheader("🎬 v19.5 導演系統＋結論模組＋最終產圖指令")
+    st.subheader("🎬 v19.6 導演系統＋結論模組＋最終產圖指令")
 
     c1, c2 = st.columns([1.25, 0.75])
 
     with c1:
-        default_script = "標:<北車商場經營權>激戰! <新光三越>1分險勝<微風>" + NL + NL + "[圖-右主]" + NL + NL + "(方框)" + NL + "北車商場招標" + NL + "新光三越險勝" + NL + "微風提出異議" + NL + "台鐵暫緩公告" + NL + NL + "(數個假人icon)" + NL + "評審委員" + NL + NL + "(關係-節點A)" + NL + "唯一具工務專業背景" + NL + "缺席甄審會議" + NL + NL + "#筆刷" + NL + "恐走向法律戰"
+        default_script = ""
         script = st.text_area(
-            "框訊文字稿",
+            "框訊文字稿（預設空白，不會自帶範例文字）",
             key="manual_script",
             height=420,
             value=st.session_state.get("manual_script", default_script),
+            placeholder="請貼上你自己的框訊文字稿；系統不會自動帶入北車/新光/微風等範例文字。",
         )
+        if not script.strip():
+            st.info("目前文字稿是空白。請貼上內容後再產生最終指令。")
 
     with c2:
         st.markdown("### 🛠️ 編譯設定")
         auto_director = st.toggle("🎬 啟動自動導演判斷", value=True)
-        auto_patch = st.toggle("自動補必要 [圖] 區", value=True)
-        director = build_director_report(script)
+        auto_patch = st.toggle("自動補必要 [圖] 區（預設關閉，避免自動生成你沒給的文字）", value=False)
+        if script.strip():
+            director = build_director_report(script)
+        else:
+            director = {
+                "frame_type": default_frame,
+                "reporter_subtype": "左右解釋型",
+                "style_name": default_style,
+                "headline_mode": "手動選擇",
+                "density": "低密度",
+                "tone": "穩重資訊型",
+                "conclusion_type": "不使用",
+                "conclusion_sentence": "",
+                "conclusion_position": "不產生結論模組",
+                "safe_zone": "不啟用",
+            }
 
         if auto_director:
             frame_type = director["frame_type"]
@@ -1472,7 +1501,7 @@ with tab_prompt:
         for warning in parsed.warnings:
             st.warning(warning)
 
-    st.markdown("### 🧪 v19.5 防呆檢查")
+    st.markdown("### 🧪 v19.6 防呆檢查")
     for item in build_quality_check(parsed, frame_type, reporter_subtype, use_safe_zone):
         st.checkbox(item, value=True, disabled=True)
 
