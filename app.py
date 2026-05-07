@@ -2,13 +2,13 @@ from __future__ import annotations
 
 # -*- coding: utf-8 -*-
 """
-Visual Director v19.6｜防亂生文字版
+Visual Director v22｜Senior News CG Designer Mode
 
 重點：
 1. 保留 Gemini API 串接
 2. 保留框訊模板庫
 3. 保留完整 HOLE_PUNCHER_V66，不簡化
-4. v19.6 導演系統：自動判斷版型大類、記者說新聞子類型、風格、密度、語氣、必要圖區
+4. v20.3 導演系統：自動判斷版型大類、記者說新聞子類型、風格、密度、語氣、必要圖區
 5. 結論模組：自動偵測結論句，判斷筆刷 / 蓋章 / 不使用，並給出安全位置
 6. 記者說新聞子類型可手動覆寫，並直接影響 CG preview 與 prompt
 7. 加入安全區硬邊界、資訊密度控制、視覺層級、結論模組、防呆檢查
@@ -16,10 +16,11 @@ Visual Director v19.6｜防亂生文字版
 """
 
 import os
+import re
 import textwrap
 import html
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 import streamlit as st
@@ -31,6 +32,40 @@ except Exception:
     genai = None
 
 NL = chr(10)
+
+# =========================================================
+# v22：雙模型手選 + 20年新聞台CG美術總監模式 + 只排版不腦補 + Prompt 成本監控 + 防亂生文字稽核 + CG Prompt Translator + Asset Protection Zone + 中文白名單 + AI自由風格排版 + Explicit Brush Only + Zero Assumption
+# =========================================================
+AI_MODELS: Dict[str, str] = {
+    "💸 最省｜Gemini 3.1 Flash Lite Preview": "gemini-3.1-flash-lite-preview",
+    "⚡ 中間｜Gemini 2.5 Flash": "gemini-2.5-flash",
+}
+
+UI_FRAME_OPTIONS = ["標大框", "框訊", "記者說新聞"]
+
+
+def normalize_frame_for_ui(frame_type: str) -> str:
+    """把內部框訊細分類收斂成 UI 只顯示的三大類。"""
+    if frame_type.startswith("框訊"):
+        return "框訊"
+    if frame_type == "記者說新聞":
+        return "記者說新聞"
+    return "標大框"
+
+
+def resolve_frame_for_engine(ui_frame_type: str, script: str = "") -> str:
+    """
+    UI 只讓使用者選三種；內部仍沿用 v19.6 的細分類引擎。
+    - 標大框：不動，維持原本 MEGA LARGE 兩行大標邏輯。
+    - 記者說新聞：不動，維持 subtype / safe zone / 結論模組。
+    - 框訊：交給 AI/規則自動判斷多圖對比、對打時間軸、數據分析、流程關係。
+    """
+    if ui_frame_type == "框訊":
+        detected = auto_detect_frame_type(script) if script.strip() else "框訊・多圖對比"
+        if detected == "記者說新聞" or detected == "標大框":
+            return "框訊・多圖對比"
+        return detected
+    return ui_frame_type
 
 STRICT_NO_EXTRA_FACTS = """
 【防亂生文字規則｜絕對遵守】
@@ -47,7 +82,7 @@ STRICT_NO_EXTRA_FACTS = """
 # 0. Streamlit 基本設定
 # =========================================================
 st.set_page_config(
-    page_title="Visual Director v19.6｜防亂生文字版",
+    page_title="Visual Director v22｜Senior News CG Designer",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -124,6 +159,11 @@ STYLE_CONFIG: Dict[str, Dict[str, str]] = {
 # 2. 框訊模板庫
 # =========================================================
 FRAME_TEMPLATES: Dict[str, Dict[str, str]] = {
+    "框訊": {
+        "summary": "框訊整併入口；使用者只選框訊，內部自動判斷多圖對比、對打時間軸、數據分析、流程關係。",
+        "structure": "AI decides the most suitable broadcast information-card layout based on content; preserve all image placeholders as protected blank zones.",
+        "recommended_tags": "[圖-左主] / [圖-右主] / (色塊) / (對話框) / (數據框) / #筆刷",
+    },
     "記者說新聞": {
         "summary": "記者說新聞解釋型 CG，常見左右欄資訊拆解；右下角必鎖跑馬安全區。",
         "structure": "Top headline always anchored at the very top; left explanation/data/image column; right analysis/reason column; bottom-right ticker safe zone locked.",
@@ -157,6 +197,20 @@ FRAME_TEMPLATES: Dict[str, Dict[str, str]] = {
 }
 
 
+AI_FREE_STYLE_NAME = "AI自由創作風格（不受固定風格庫限制）"
+
+def get_style_config(style_name: str) -> Dict[str, str]:
+    """允許 AI 自由創作風格；手動模式才使用固定 STYLE_CONFIG。"""
+    if style_name == AI_FREE_STYLE_NAME or str(style_name).startswith("AI自由"):
+        return {
+            "theme": "AI-directed content-specific broadcast news design",
+            "ui": "AI may freely choose broadcast background texture, color palette, typography weight, card style, lighting, and composition according to the story tone",
+            "palette": "AI-selected; not limited to predefined style packs",
+            "highlight": "AI-selected high-contrast accent based on approved text hierarchy",
+        }
+    return STYLE_CONFIG.get(style_name, STYLE_CONFIG["民生消費 (Fluid Analytics)"])
+
+
 @dataclass
 class ParsedInput:
     title: str
@@ -173,8 +227,35 @@ def _contains_any(script: str, words: List[str]) -> bool:
     return any(word in script for word in words)
 
 
+ASSET_PROTECTION_KEYWORDS = [
+    "圖", "圖片", "定圖", "定", "開框", "ROLL", "roll", "Roll", "LINE截圖", "截圖",
+    "監視器", "畫面", "外觀照", "照片", "空拍", "地圖", "示意", "素材", "影像",
+]
+
+
+def is_asset_protection_tag(tag: str) -> bool:
+    """
+    v20.5.2：判斷新聞台素材保護區。
+    這些不是要畫出來的文字，而是後製塞真實照片/影片/截圖的硬留白框。
+    例如：(#定圖)、(圖片)、(定國防部外觀照)、(#開框roll)、(LINE截圖)。
+    """
+    if not tag:
+        return False
+    t = tag.strip()
+    if t.startswith("[圖"):
+        return True
+    if "#定" in t or "＃定" in t or "#開框" in t or "＃開框" in t:
+        return True
+    if any(k in t for k in ASSET_PROTECTION_KEYWORDS):
+        # 避免把「圖利」這類純文字誤判成圖區。
+        if "圖利" in t and not any(x in t for x in ["定", "圖", "圖片", "ROLL", "截圖", "畫面"]):
+            return False
+        return True
+    return False
+
+
 def _count_image_intents(script: str) -> int:
-    markers = ["[圖", "(#定", "(定", "截圖", "ROLL", "roll", "定圖", "[圖-"]
+    markers = ["[圖", "(#定", "(＃定", "(定", "(圖片", "圖片", "截圖", "ROLL", "roll", "定圖", "外觀照", "開框"]
     return sum(script.count(marker) for marker in markers)
 
 
@@ -221,60 +302,139 @@ def auto_detect_tone(script: str, frame_type: str) -> str:
     return "穩重資訊型"
 
 
+def has_explicit_brush_tag(script: str) -> bool:
+    """v20.6.3 CORE LAW：只有使用者明確標註筆刷，才允許生成筆刷效果。"""
+    if not script:
+        return False
+    patterns = [
+        r"\(#?筆刷[^)]*\)",
+        r"\[筆刷[^\]]*\]",
+        r"[#＃]筆刷",
+        r"---+\s*筆刷",
+        r"筆刷效果",
+    ]
+    return any(re.search(p, script) for p in patterns)
+
+
+def has_explicit_stamp_tag(script: str) -> bool:
+    """只有明確標註蓋章，才允許生成蓋章效果。"""
+    if not script:
+        return False
+    patterns = [
+        r"\(#?蓋章[^)]*\)",
+        r"\[蓋章[^\]]*\]",
+        r"[#＃]蓋章",
+        r"---+\s*蓋章",
+        r"蓋章效果",
+    ]
+    return any(re.search(p, script) for p in patterns)
+
+
+EXPLICIT_BROADCAST_UI_PATTERNS = [
+    r"\(#?跑馬[^)]*\)",
+    r"\(#?快訊[^)]*\)",
+    r"\(#?ticker[^)]*\)",
+    r"\(#?LIVE[^)]*\)",
+    r"\(#?台標[^)]*\)",
+    r"\(#?時間[^)]*\)",
+    r"\(#?日期[^)]*\)",
+    r"\(#?lower[-_ ]?third[^)]*\)",
+    r"[#＃](跑馬|快訊|ticker|LIVE|台標|時間|日期|lower[-_ ]?third)",
+]
+
+def has_explicit_broadcast_ui_tag(script: str) -> bool:
+    """v20.6.4 CORE LAW：只有使用者明確標註，才允許生成跑馬/快訊/LIVE/台標/時間等電視 UI。"""
+    if not script:
+        return False
+    return any(re.search(p, script, flags=re.IGNORECASE) for p in EXPLICIT_BROADCAST_UI_PATTERNS)
+
+
+def build_zero_assumption_policy(script: str = "") -> str:
+    """禁止圖片模型自行補完整電視畫面 UI。內容 logo 仍可依使用者原稿明確提供處理。"""
+    return """
+[CORE LAW #03｜ZERO ASSUMPTION MODE]
+- 不得自行推論、補齊或裝飾任何使用者未提供的電視台 UI。
+- 禁止自行生成：跑馬、快訊、BREAKING NEWS、LIVE、台標、頻道 logo、時間、日期、浮水印、lower-third、字幕條、新聞爬蟲、底部資訊帶。
+- 只有使用者明確標註 (#跑馬)、(#快訊)、(#ticker)、(#LIVE)、(#台標)、(#時間)、(#日期)、(#lower-third) 才允許生成相對應 UI。
+- 若未標註：寧可留白或只放背景，不得腦補。
+- EMPTY > ASSUMPTION. Never decorate automatically.
+""".strip()
+
+
+def audit_extra_ui(text: str) -> Dict[str, Any]:
+    """檢查文字/Prompt 內是否出現未授權的常見電視 UI 詞。"""
+    raw = text or ""
+    allowed = has_explicit_broadcast_ui_tag(raw)
+    risky_terms = [
+        "BREAKING", "Breaking", "breaking", "LIVE", "Live", "live",
+        "快訊", "即時頭條", "頭條", "跑馬", "ticker", "Ticker",
+        "NEWS", "News", "新聞爬蟲", "字幕條", "lower-third", "watermark", "浮水印",
+    ]
+    found = sorted(set(term for term in risky_terms if term in raw))
+    return {
+        "status": "warning" if found and not allowed else "ok",
+        "found_terms": found,
+        "allowed_by_user_tag": allowed,
+        "note": "若未明確標註跑馬/快訊/LIVE/台標/時間等 UI，Gemini Image Prompt 不應自行生成。",
+    }
+
+
+def render_ui_audit(audit: Optional[Dict[str, Any]]) -> None:
+    st.markdown("### 🧯 UI 零推論稽核")
+    if not audit:
+        st.caption("尚未執行 UI 稽核。")
+        return
+    if audit.get("status") == "ok":
+        st.success("✅ 未偵測到未授權的跑馬／快訊／LIVE／台標等 UI。")
+    else:
+        st.warning("⚠ 偵測到疑似未授權的電視 UI 詞，請確認是否為你明確標註。")
+        st.write("、".join(audit.get("found_terms", [])))
+    st.caption(audit.get("note", ""))
+
+
+def _clean_effect_text(line: str) -> str:
+    """移除效果標籤本身，保留真正要上畫面的文字。"""
+    cleaned = line
+    tokens = [
+        "[蓋章效果]", "[筆刷效果]", "(#蓋章)", "(#筆刷)", "(蓋章)", "(筆刷)",
+        "#蓋章", "#筆刷", "---蓋章", "---筆刷", "--------蓋章", "--------筆刷",
+        "蓋章效果", "筆刷效果",
+    ]
+    for token in tokens:
+        cleaned = cleaned.replace(token, "")
+    cleaned = re.sub(r"\([^)]*(?:蓋章|筆刷)[^)]*\)", "", cleaned)
+    cleaned = cleaned.strip('-—= ：:[]\" ')
+    return cleaned
+
+
 def extract_conclusion_candidates(script: str) -> List[str]:
-    """v19.6：抓可能適合當結論模組的句子。優先找筆刷/蓋章標記，其次找最後短強句。"""
+    """v20.6.3：只抓使用者明確標註筆刷/蓋章的句子；不再從普通內文自動抽成筆刷。"""
     candidates: List[str] = []
     lines = [line.strip() for line in script.splitlines() if line.strip()]
-
-    trigger_words = [
-        "蓋章", "筆刷", "恐", "預計", "不如", "關鍵", "影響", "走向", "效應",
-        "核心", "亮點", "警訊", "反思", "安全", "近程", "美食", "完工", "法律戰",
-    ]
-    remove_tokens = ["[蓋章效果]", "[筆刷效果]", "#筆刷", "---筆刷", "--------蓋章", "[", "]", "\""]
-
     for line in lines:
-        if _contains_any(line, trigger_words):
-            cleaned = line
-            for token in remove_tokens:
-                cleaned = cleaned.replace(token, "")
-            cleaned = cleaned.strip("-—= ：:")
-            if 4 <= len(cleaned) <= 36:
+        if re.search(r"(筆刷|蓋章)", line):
+            cleaned = _clean_effect_text(line)
+            if 2 <= len(cleaned) <= 40:
                 candidates.append(cleaned)
-
-    if not candidates:
-        for line in reversed(lines):
-            cleaned = line.replace("\"", "").strip("-—= ：:")
-            if 4 <= len(cleaned) <= 30 and not cleaned.startswith("[") and not cleaned.startswith("("):
-                candidates.append(cleaned)
-                break
-
     return list(dict.fromkeys(candidates))[:3]
 
 
 def detect_conclusion_module(script: str, frame_type: str, reporter_subtype: str = "") -> Dict[str, str]:
-    """v19.6：自動判斷結論模組類型與安全位置。"""
+    """v20.6.3：效果模組採 explicit only；沒有標註筆刷/蓋章就不自動產生。"""
+    explicit_brush = has_explicit_brush_tag(script)
+    explicit_stamp = has_explicit_stamp_tag(script)
     candidates = extract_conclusion_candidates(script)
     sentence = candidates[0] if candidates else ""
 
-    if not sentence:
+    if not explicit_brush and not explicit_stamp:
         return {
             "type": "不使用",
             "sentence": "",
             "position": "不產生結論模組",
-            "reason": "未偵測到適合獨立強調的結論句",
+            "reason": "未標註筆刷或蓋章；v20.6.3 禁止 AI 自行把內文升級成筆刷/蓋章",
         }
 
-    strong_stamp_words = ["不如", "法律戰", "爆", "怒", "疑雲", "失能", "狀況外", "人血饅頭", "完工", "大勝", "慘輸"]
-    brush_words = ["預計", "關鍵", "效應", "影響", "走向", "反思", "核心", "亮點", "警訊", "安全", "近程", "美食"]
-
-    if "蓋章" in script or _contains_any(sentence, strong_stamp_words):
-        module_type = "蓋章"
-    elif "筆刷" in script or _contains_any(sentence, brush_words):
-        module_type = "筆刷"
-    elif frame_type == "記者說新聞" and reporter_subtype == "敘事觀點型":
-        module_type = "淡筆刷"
-    else:
-        module_type = "筆刷"
+    module_type = "蓋章" if explicit_stamp else "筆刷"
 
     if frame_type == "記者說新聞":
         if reporter_subtype == "表格數據型":
@@ -285,7 +445,7 @@ def detect_conclusion_module(script: str, frame_type: str, reporter_subtype: str
             position = "右欄結論文字旁或背景留白處；不可壓人物圖與跑馬"
         else:
             position = "右欄中下方、跑馬安全區上方；不可進右下588×90"
-    elif frame_type.startswith("框訊"):
+    elif frame_type.startswith("框訊") or frame_type == "框訊":
         position = "主資訊卡底部或右側背景留白；不可壓圖、人物、對話框"
     else:
         position = "標題下方的資訊區邊緣或右側留白；不可壓主圖"
@@ -294,7 +454,7 @@ def detect_conclusion_module(script: str, frame_type: str, reporter_subtype: str
         "type": module_type,
         "sentence": sentence,
         "position": position,
-        "reason": "偵測到可作為畫面收束的結論句",
+        "reason": "使用者明確標註效果；允許生成，但不可壓素材保護區，也不可重複抽取普通內文",
     }
 
 
@@ -392,7 +552,7 @@ def build_quality_check(parsed: ParsedInput, frame_type: str, reporter_subtype: 
     if frame_type == "記者說新聞":
         checks.append(f"記者說新聞子類型：{reporter_subtype}，允許較高資訊密度但不可壓安全區")
     checks.append("視覺層級：主標 300%，小標 160%，內文 100%")
-    checks.append("v19.6 結論模組：筆刷/蓋章只能放在背景或卡片外緣，不可壓圖、人物、表格與跑馬")
+    checks.append("v20.6.3 結論模組：只有明確標註筆刷/蓋章才生成；不可壓圖、人物、表格與跑馬")
     return checks
 
 
@@ -421,7 +581,7 @@ def run_self_tests() -> List[str]:
     conclusion = detect_conclusion_module(case_conclusion, "記者說新聞", "左右解釋型")
     assert conclusion["type"] == "蓋章"
     assert "沖繩" in conclusion["sentence"]
-    results.append("v19.6 結論模組判斷 OK")
+    results.append("v20.3 結論模組判斷 OK")
 
     patched = auto_patch_missing_image_zones("標:測試新聞", "標大框")
     assert "[圖-右主]" in patched
@@ -469,7 +629,116 @@ def configure_gemini(api_key: str) -> bool:
     return True
 
 
-def generate_ai_frame_content(news_text: str, frame_type: str, api_key: str) -> str | None:
+# =========================================================
+# v20.4 Prompt 成本監控 + 防亂生文字稽核
+# =========================================================
+MODEL_PRICE_TABLE: Dict[str, Dict[str, float]] = {
+    # 單位：USD / 1M tokens；這裡做「粗估監控」，實際請以 Google Billing 為準。
+    "gemini-3.1-flash-lite-preview": {"input": 0.10, "output": 0.40},
+    "gemini-2.5-flash": {"input": 0.30, "output": 2.50},
+    "gemini-2.5-pro": {"input": 1.25, "output": 10.00},
+}
+
+
+def _read_usage_value(usage: Any, key: str, default: int = 0) -> int:
+    if usage is None:
+        return default
+    if isinstance(usage, dict):
+        return int(usage.get(key, default) or default)
+    return int(getattr(usage, key, default) or default)
+
+
+def build_usage_report(response: Any, model_name: str, model_label: str = "") -> Dict[str, Any]:
+    usage = getattr(response, "usage_metadata", None)
+    input_tokens = _read_usage_value(usage, "prompt_token_count")
+    output_tokens = _read_usage_value(usage, "candidates_token_count")
+    total_tokens = _read_usage_value(usage, "total_token_count", input_tokens + output_tokens)
+
+    price = MODEL_PRICE_TABLE.get(model_name, {"input": 0.0, "output": 0.0})
+    estimated_cost = (input_tokens / 1_000_000 * price["input"]) + (output_tokens / 1_000_000 * price["output"])
+
+    return {
+        "model_label": model_label,
+        "model_name": model_name,
+        "prompt_token_count": input_tokens,
+        "candidates_token_count": output_tokens,
+        "total_token_count": total_tokens,
+        "estimated_cost_usd": round(estimated_cost, 6),
+        "price_note": "粗估值；實際費用以 Google Billing / AI Studio API Spend 為準。",
+    }
+
+
+def _normalize_token(token: str) -> str:
+    return token.strip().strip("，。；：、,.!?！？()（）[]【】<>《》『』「」\"\'\n\t ")
+
+
+def extract_high_risk_facts(text: str) -> Dict[str, List[str]]:
+    text = text or ""
+    number_pattern = r"(?:\d+(?:\.\d+)?|[０-９]+)(?:\s?(?:%|％|元|萬|億|兆|人|件|天|年|月|日|小時|分鐘|公里|公尺|坪|歲|點|度|名|位|成|倍))?"
+    numbers = re.findall(number_pattern, text)
+
+    quoted = re.findall(r"[「『《【<]([^」』》】>]{2,20})[」』》】>]", text)
+    suffix_pattern = r"[\u4e00-\u9fffA-Za-z0-9]{2,18}(?:市|縣|區|鄉|鎮|村|里|路|街|橋|站|港|機場|醫院|學校|大學|公司|集團|基金會|協會|委員會|部|署|局|院|府|黨|台|臺|銀行|商場|百貨|車站|捷運|法院|地檢署|北檢|地院|警局|分局)"
+    suffix_terms = re.findall(suffix_pattern, text)
+
+    latin_terms = re.findall(r"\b[A-Z][A-Za-z0-9&._-]{1,24}\b", text)
+
+    facts = {
+        "numbers": sorted(set(_normalize_token(x) for x in numbers if _normalize_token(x))),
+        "named_terms": sorted(set(_normalize_token(x) for x in (quoted + suffix_terms + latin_terms) if _normalize_token(x))),
+    }
+    return facts
+
+
+def audit_extra_facts(source_text: str, ai_output: str) -> Dict[str, Any]:
+    source = source_text or ""
+    output = ai_output or ""
+    source_facts = extract_high_risk_facts(source)
+    output_facts = extract_high_risk_facts(output)
+
+    added_numbers = [x for x in output_facts["numbers"] if x and x not in source]
+    added_named_terms = [x for x in output_facts["named_terms"] if x and x not in source]
+
+    return {
+        "status": "warning" if added_numbers or added_named_terms else "ok",
+        "added_numbers": added_numbers[:50],
+        "added_named_terms": added_named_terms[:50],
+        "note": "這是保守型事後稽核：抓新增數字、引號/括號詞、地名機構名等高風險詞；仍需人工確認新聞事實。",
+    }
+
+
+def render_usage_report(report: Optional[Dict[str, Any]]) -> None:
+    st.markdown("### 💰 Prompt 成本監控")
+    if not report:
+        st.caption("尚未取得 token 用量。")
+        return
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Input Tokens", f"{report.get('prompt_token_count', 0):,}")
+    c2.metric("Output Tokens", f"{report.get('candidates_token_count', 0):,}")
+    c3.metric("Total Tokens", f"{report.get('total_token_count', 0):,}")
+    c4.metric("估算 USD", f"${report.get('estimated_cost_usd', 0):.6f}")
+    st.caption(f"模型：`{report.get('model_name', '')}`｜{report.get('price_note', '')}")
+
+
+def render_fact_audit(audit: Optional[Dict[str, Any]]) -> None:
+    st.markdown("### 🛡 防亂生文字稽核")
+    if not audit:
+        st.caption("尚未執行稽核。")
+        return
+    if audit.get("status") == "ok":
+        st.success("✅ 未偵測到新增高風險事實（數字／疑似人名地名機構名）。")
+    else:
+        st.warning("⚠ 偵測到 AI 可能新增了原稿沒有的高風險資訊，請人工確認。")
+        if audit.get("added_numbers"):
+            st.markdown("**新增數字 / 單位：**")
+            st.write("、".join(audit["added_numbers"]))
+        if audit.get("added_named_terms"):
+            st.markdown("**新增疑似人名 / 地名 / 機構名：**")
+            st.write("、".join(audit["added_named_terms"]))
+    st.caption(audit.get("note", ""))
+
+
+def generate_ai_frame_content(news_text: str, frame_type: str, api_key: str, model_name: str, model_label: str = "") -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
     """AI 只負責拆稿，不負責決定圖區壓縮或侵入。"""
     if not configure_gemini(api_key):
         return None
@@ -507,17 +776,18 @@ AI 只負責內容拆解，不得破壞版面安全。
 
     try:
         model = genai.GenerativeModel(
-            model_name="gemini-3.1-flash-lite-preview",
+            model_name=model_name,
             system_instruction=textwrap.dedent(system_instruction).strip(),
         )
         response = model.generate_content(
             f"請整理這則新聞稿：{NL}{NL}{news_text}",
             generation_config=genai.types.GenerationConfig(temperature=0.05),
         )
-        return response.text.strip()
+        usage_report = build_usage_report(response, model_name, model_label)
+        return response.text.strip(), usage_report
     except Exception as e:
         st.error(f"AI 生成失敗：{e}")
-        return None
+        return None, None
 
 
 # =========================================================
@@ -590,7 +860,7 @@ def parse_user_script(script: str) -> ParsedInput:
 
     image_tags: List[str] = []
     for tag in square_tags + paren_tags:
-        if tag.startswith("[圖") or tag.startswith("(#定") or tag.startswith("(定") or _contains_any(tag, ["圖", "截圖", "ROLL", "roll", "定圖"]):
+        if is_asset_protection_tag(tag):
             image_tags.append(tag)
     image_tags = list(dict.fromkeys([tag.strip() for tag in image_tags if tag.strip()]))
 
@@ -737,7 +1007,7 @@ def build_final_prompt_v18(
     reporter_subtype_override: str = "",
 ) -> Tuple[str, ParsedInput]:
     parsed = parse_user_script(script)
-    style = STYLE_CONFIG[style_name]
+    style = get_style_config(style_name)
 
     safe_zone_text = (
         """
@@ -761,11 +1031,17 @@ Do not leave unnecessary empty space above it; fill content downward until Y=990
     )
 
     icon_logic = "3D Volumetric / PBR-like depth" if icon_style == "3D" else "Flat 2D clean vector"
-    color_logic = (
-        f"Dynamic contextual color based on headline sentiment: {clean_inline_text(parsed.title)}"
-        if ai_color
-        else f"Fixed palette: {style['palette']} | Highlight: {style['highlight']}"
-    )
+    if style_name == AI_FREE_STYLE_NAME or str(style_name).startswith("AI自由"):
+        color_logic = (
+            "AI FREE STYLE MODE: AI may decide color palette, background style, typography treatment, card shape, and composition according to the news content; "
+            "not limited to the predefined Visual Director style packs. Must preserve broadcast readability and all asset protection rules."
+        )
+    else:
+        color_logic = (
+            f"Dynamic contextual color based on headline sentiment: {clean_inline_text(parsed.title)}"
+            if ai_color
+            else f"Fixed palette: {style['palette']} | Highlight: {style['highlight']}"
+        )
 
     prompt = f"""
 [VISUAL DIRECTOR v18 DIRECTOR SYSTEM | BROADCAST NEWS CG]
@@ -795,6 +1071,8 @@ Layout mode: {layout_mode}
 
 {build_symbol_matrix_v17()}
 
+{build_visual_token_compiler_block(script, frame_type, headline_mode)}
+
 {build_layout_diagnostics(parsed, frame_type)}
 
 [v19.6 DIRECTOR DECISION]
@@ -803,7 +1081,7 @@ Layout mode: {layout_mode}
 - Information Density: {density_score(script)}
 - Tone: {auto_detect_tone(script, frame_type)}
 - Visual hierarchy: Main headline 300%, module title 160%, body text 100%.
-- If density is high, prefer table/card compression; if density is low, use narrative spacing.
+- If density is high, use senior newsroom compact layout: smaller font, tighter line spacing, and stronger hierarchy; do not delete user-provided text.
 - Conclusion Module Type: {detect_conclusion_module(script, frame_type, reporter_subtype_override if reporter_subtype_override else detect_reporter_subtype(script))['type']}
 - Conclusion Sentence: {detect_conclusion_module(script, frame_type, reporter_subtype_override if reporter_subtype_override else detect_reporter_subtype(script))['sentence']}
 - Conclusion Safe Position: {detect_conclusion_module(script, frame_type, reporter_subtype_override if reporter_subtype_override else detect_reporter_subtype(script))['position']}
@@ -816,7 +1094,11 @@ Layout mode: {layout_mode}
 - Every detected image placeholder must become a clean empty protected zone for real post-production photos.
 - No text/icon/UI/decoration/stamp/brush effect may touch or overlap protected image zones.
 - Stamp effects must be outside [圖] placeholders; stamps may sit on card borders, date labels, or background only.
-- If any image zone and text/effects compete for space, image zone wins.
+- BRUSH EFFECT IS EXPLICIT ONLY: Do not create brush effects unless the user explicitly writes (#筆刷), (筆刷), #筆刷, ---筆刷, or 筆刷效果.
+- Do not convert <emphasis>, quotes, numbers, conflict words, or normal body text into brush strokes.
+- Do not duplicate body text into a separate brush/stamp/sticker module unless explicitly tagged. Only promote a sentence once.
+{build_zero_assumption_policy(script)}
+- If any image zone and text compete for space, preserve both by reducing spacing, reducing font size, or rearranging modules.
 - Final result must be a professional TV news CG, not a poster, not a webpage.
 
 [CONTENT SCRIPT]
@@ -827,6 +1109,648 @@ Layout mode: {layout_mode}
 """
     return textwrap.dedent(prompt).strip(), parsed
 
+
+
+
+def build_senior_news_cg_designer_policy() -> str:
+    """
+    v22 核心：把 Gemini Image 當作 20 年台灣新聞台 CG 美術總監。
+    只排版使用者給的字，圖區留白，不腦補新聞內容。
+    """
+    return """
+[ROLE｜20-YEAR SENIOR TAIWANESE NEWS CG DESIGNER]
+You are not an AI illustrator, web UI designer, poster designer, or magazine designer.
+You are a senior Taiwanese TV news CG visual designer with 20 years of newsroom experience.
+
+Your job:
+Turn the exact user-provided Traditional Chinese text into a professional broadcast-ready Taiwanese TV news CG.
+Do not create new story content.
+Do not add new facts.
+Do not rewrite or summarize the news.
+Do not delete user-provided text because the layout is crowded.
+
+[NEWSROOM CG WORKFLOW]
+Think like a real TV news visual staff member:
+- make the headline dominant and readable
+- arrange high-density Chinese text with clear hierarchy
+- use broadcast-style headline bands, evidence boards, warning strips, stamps, portrait strips, callout bands, and hard news composition when appropriate
+- reserve clean blank image areas for post-production photos/video/documents
+- make the result suitable for on-air Taiwanese TV news
+
+[TEXT TRUTH LOCK]
+Use ONLY the Traditional Chinese text provided by the user.
+Never invent names, places, institutions, dates, numbers, charges, conclusions, captions, labels, or extra facts.
+Never translate.
+Never add English.
+Never add random numbers.
+Never create fake Chinese-like glyphs.
+Never duplicate names, numbers, keywords, or headline fragments.
+
+If space is tight:
+reduce font size,
+reduce line spacing,
+reduce padding,
+rearrange modules,
+but do not delete user-provided text.
+
+[PHOTO / VIDEO ZONE LOCK]
+Any user-marked image/photo/video/document area is for post-production.
+It must stay clean and empty.
+No fake photos.
+No fake screenshots.
+No icons.
+No labels.
+No words like IMAGE BOX, PHOTO, PLACEHOLDER, SECTION, CARD, DEBUG.
+No text, stamps, brush strokes, shadows, or decorations may enter the blank image area.
+Keep a clean safety buffer.
+
+[STYLE LOCK]
+Final image must look like a Taiwanese TV news CG.
+Not a dashboard.
+Not an app UI.
+Not a webpage.
+Not a magazine cover.
+Not a social media post.
+Not a movie poster.
+Avoid clean SaaS-card/dashboard aesthetics unless the news content explicitly requires a data dashboard.
+
+[OUTPUT DISCIPLINE]
+The final artwork should look like a human newsroom CG designer made it,
+not like a parser rendered a specification.
+Do not show prompt syntax, brackets, debug labels, section names, image-box names, placeholder labels, or instruction labels.
+""".strip()
+
+
+# =========================================================
+# v20.5 CG Prompt Translator：把導演規格轉成 Gemini Image 看得懂的乾淨影像 prompt
+# =========================================================
+def _extract_asset_zones(script: str) -> List[str]:
+    """抓出所有素材保護區語法：(#定圖)、(圖片)、(定國防部外觀照)、[圖-右主]、(#開框roll) 等。"""
+    if not script:
+        return []
+    tags = _collect_square_tags(script) + _collect_parenthesis_tags(script)
+    zones = [tag.strip() for tag in tags if is_asset_protection_tag(tag)]
+    return list(dict.fromkeys([z for z in zones if z]))
+
+
+def _extract_approved_text_whitelist(script: str) -> List[str]:
+    """
+    v20.6.7：抽出允許 Gemini Image 生成的繁體中文字白名單。
+
+    修正重點：
+    - 保留時間格式，例如 14:30、08:05，不再切成兩行。
+    - 欄位控制用冒號，例如「標:」、「內容：」，仍會轉成換行。
+    - 只拿使用者原稿中真正要上畫面的文字；移除素材保護區與版型指令。
+    """
+    if not script:
+        return []
+
+    text = script
+
+    # 移除素材保護區標籤，避免把「定國防部外觀照」這種素材說明當成要上字。
+    for tag in _extract_asset_zones(text):
+        text = text.replace(tag, "\n")
+
+    # 移除純版型指令，但保留 <高權重文字>、【小標文字】 內文。
+    text = re.sub(
+        r"\([^\)]*(?:色塊|對話框|數據框|筆刷|蓋章|icon|假人|頭\+字|打卡)[^\)]*\)",
+        "\n",
+        text,
+    )
+    text = re.sub(
+        r"[#＃](?:色塊|對話框|數據框|筆刷|蓋章|icon|假人|打卡|開框roll|開框ROLL|定圖)",
+        "\n",
+        text,
+    )
+
+    text = text.replace("<", "").replace(">", "")
+    text = text.replace("【", "").replace("】", "")
+    text = text.replace("[", "").replace("]", "")
+    text = text.replace('"', "")
+    text = text.replace("---", "\n")
+
+    # v20.6.7 BUG FIX：
+    # 保留 14:30、08:05 這種時間格式；
+    # 只有左右不是數字的欄位冒號才切行，例如「標:」、「內容：」。
+    text = re.sub(
+        r"(?<!\d)[：:](?!\d)",
+        "\n",
+        text,
+    )
+
+    candidates: List[str] = []
+    for raw in text.splitlines():
+        line = " ".join(raw.strip().split())
+        if not line:
+            continue
+
+        # 過濾欄位控制字。
+        if line in ["左", "右", "上", "下", "大標", "標", "內容", "框訊", "圖片"]:
+            continue
+
+        if len(line) > 34:
+            # 長句保留，但避免塞爆 prompt；影像模型只需要知道文字白名單。
+            line = line[:34]
+
+        # 至少包含中文字、數字或百分比，才視為可上畫面文字。
+        if re.search(r"[\u4e00-\u9fff0-9%％]", line):
+            candidates.append(line)
+
+    return list(dict.fromkeys(candidates))[:24]
+
+
+def _strip_director_syntax(text: str) -> str:
+    """把新聞台控制語法轉成語意提示，不把素材/版型標籤當成要畫出的文字。"""
+    text = text or ""
+    for tag in _extract_asset_zones(text):
+        text = text.replace(tag, " protected empty photo/video asset zone ")
+    text = re.sub(r"\([^\)]*(?:色塊|對話框|數據框|筆刷|蓋章|icon|假人|打卡)[^\)]*\)", " broadcast graphic module ", text)
+    text = re.sub(r"[#＃][\w\u4e00-\u9fff]+", " broadcast effect module ", text)
+    text = re.sub(r"\[(TYPE|FRAME|TITLE|BODY|STYLE|LAYOUT|HEADLINE|CONTENT SCRIPT|DIRECTOR NOTES)[^\]]*\]", " ", text, flags=re.I)
+    text = text.replace("<", "").replace(">", "")
+    text = text.replace("【", "").replace("】", "")
+    text = text.replace("[", "").replace("]", "")
+    text = text.replace("(", "").replace(")", "")
+    return " ".join(text.split())
+
+
+# =========================================================
+# v20.6.6 Visual Token Compiler：把人類 DSL 先編譯成圖片模型懂的區塊
+# =========================================================
+def _clean_visual_text(text: str) -> str:
+    """移除導演符號，只留下可上畫面的純文字；避免 < > 造成 token 重複。"""
+    if not text:
+        return ""
+    t = text.strip()
+    for tag in _extract_asset_zones(t):
+        t = t.replace(tag, " ")
+    t = re.sub(r"\([^)]*(?:色塊|方框|對話框|數據框|筆刷|蓋章|icon|假人|打卡)[^)]*\)", " ", t)
+    t = re.sub(r"^[\-—=]{2,}$", " ", t)
+    t = t.replace("標題:", "").replace("標題=", "").replace("大標:", "").replace("大標=", "")
+    t = t.replace("標:", "").replace("標=", "")
+    t = t.replace("<", "").replace(">", "")
+    t = t.replace("【", "").replace("】", "")
+    t = t.replace("[", "").replace("]", "")
+    t = t.replace('"', "").replace("“", "").replace("”", "")
+    return " ".join(t.split()).strip()
+
+
+def _split_script_blocks(script: str) -> List[List[str]]:
+    """用 ---- / 空行切出視覺卡片區塊；分隔線永遠不渲染。"""
+    blocks: List[List[str]] = []
+    current: List[str] = []
+    for raw in (script or "").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if re.fullmatch(r"[-—=]{3,}", line):
+            if current:
+                blocks.append(current)
+                current = []
+            continue
+        current.append(line)
+    if current:
+        blocks.append(current)
+    return blocks
+
+
+def _asset_zone_spatial_hint(tag: str, index: int, total: int, frame_type: str) -> str:
+    """
+    v22：把圖區翻成新聞台美術語言，不輸出 debug 字。
+    """
+    t = (tag or "").lower()
+
+    if any(k in tag for k in ["常如山圖", "工程師圖", "特助圖", "人圖", "人物圖"]):
+        return (
+            "a vertical portrait photo slot with newsroom-style border, "
+            "part of a portrait strip if multiple portrait slots are requested, "
+            "blank interior reserved for real portrait insertion"
+        )
+
+    if "roll" in t or "roll" in tag or "ROLL" in tag:
+        if "1/3" in tag or "三分之一" in tag:
+            return (
+                "a large main ROLL/photo area, about one third of the canvas, "
+                "placed in the lower-left or left main visual zone, "
+                "blank interior reserved for real footage insertion"
+            )
+        if "1/4" in tag or "四分之一" in tag:
+            return (
+                "a large main ROLL/photo area, about one quarter of the canvas, "
+                "placed in the lower-left or left main visual zone, "
+                "blank interior reserved for real footage insertion"
+            )
+        return (
+            "a large main ROLL/photo area in the left or lower-left visual zone, "
+            "blank interior reserved for real footage insertion"
+        )
+
+    if any(k in tag for k in ["簽約", "合約", "文件", "文書", "書面"]):
+        return (
+            "a document evidence area near the related text module, "
+            "clean blank interior reserved for a real document image"
+        )
+
+    if frame_type == "記者說新聞":
+        return (
+            "a clean editorial photo zone inside the explanatory layout, "
+            "away from ticker-safe zone, blank for post-production"
+        )
+
+    return (
+        "a clean editorial photo/video zone, clearly separated from text, "
+        "blank for post-production real image insertion"
+    )
+
+def build_visual_token_compiler_block(script: str, frame_type: str, headline_mode: str) -> str:
+    """
+    v22：內部仍解析 headline / text groups / asset zones，
+    但給 Gemini Image 的是新聞台資深美術 briefing。
+    不輸出 SECTION_CARD_01 / IMAGE_BOX_01 / compiler count 這類機器語言。
+    """
+    parsed = parse_user_script(script)
+    title = _clean_visual_text(parsed.title)
+    asset_zones = _extract_asset_zones(script)
+    blocks = _split_script_blocks(script)
+
+    text_groups: List[List[str]] = []
+    for block in blocks:
+        clean_lines: List[str] = []
+        for line in block:
+            if line.strip() == parsed.title.strip() or line.strip().startswith(("標:", "標=", "大標:", "大標=", "標題:", "標題=")):
+                continue
+            if is_asset_protection_tag(line):
+                continue
+            if re.fullmatch(r"[-—=]{3,}", line):
+                continue
+            cleaned = _clean_visual_text(line)
+            if cleaned:
+                clean_lines.append(cleaned)
+        if clean_lines:
+            text_groups.append(clean_lines[:6])
+
+    portrait_tags = [z for z in asset_zones if any(k in z for k in ["常如山圖", "工程師圖", "特助圖", "人圖", "人物圖"])]
+    roll_tags = [z for z in asset_zones if ("roll" in z.lower() or "ROLL" in z)]
+    document_tags = [z for z in asset_zones if any(k in z for k in ["文件", "簽約", "合約", "文書"])]
+    other_tags = [z for z in asset_zones if z not in portrait_tags + roll_tags + document_tags]
+
+    text_group_lines: List[str] = []
+    for idx, lines in enumerate(text_groups, start=1):
+        joined = " / ".join(lines)
+        text_group_lines.append(f"- News text module {idx}: {joined}")
+
+    if not text_group_lines:
+        text_group_lines.append("- No body text module provided. Keep the content area clean and do not invent text.")
+
+    visual_zone_lines: List[str] = []
+    if portrait_tags:
+        visual_zone_lines.append(
+            f"- Portrait strip: {len(portrait_tags)} equal vertical portrait slots, aligned like Taiwanese crime-news mugshot panels, with clean borders and blank interiors for real photos."
+        )
+    for tag in roll_tags:
+        visual_zone_lines.append(f"- Main footage zone: {_asset_zone_spatial_hint(tag, 0, len(asset_zones), frame_type)}")
+    for tag in document_tags:
+        visual_zone_lines.append(f"- Document/evidence zone: {_asset_zone_spatial_hint(tag, 0, len(asset_zones), frame_type)}")
+    for i, tag in enumerate(other_tags, start=1):
+        visual_zone_lines.append(f"- Editorial image zone {i}: {_asset_zone_spatial_hint(tag, i, len(asset_zones), frame_type)}")
+
+    if not visual_zone_lines:
+        visual_zone_lines.append("- No explicit image zone was provided. Do not invent fake photos or unnecessary placeholders.")
+
+    if any(word in script for word in ["罪嫌", "性剝削", "聲押", "報案", "偷拍", "偵辦", "羈押"]):
+        suggested_layout = (
+            "Use hard crime-news composition: huge layered headline, strong warning colors, "
+            "portrait strip when portrait slots exist, prosecutor/evidence board for charges or legal items, "
+            "callout stamp or brush only when explicitly requested, and clean blank editorial photo zones."
+        )
+    elif any(word in script for word in ["股", "億", "%", "營收", "財經", "漲", "跌"]):
+        suggested_layout = (
+            "Use financial broadcast composition with strong number hierarchy and clean data panels, "
+            "but still avoid web dashboard aesthetics."
+        )
+    else:
+        suggested_layout = (
+            "Use professional Taiwanese TV news composition with strong headline hierarchy, "
+            "clear broadcast modules, and clean post-production image zones."
+        )
+
+    return f"""
+[SENIOR NEWS CG DESIGN BRIEF v22]
+You are a 20-year Taiwanese TV news CG visual designer.
+This is a newsroom layout brief, not a UI spec.
+Do not render any instruction labels, module labels, placeholder labels, debug labels, bracket syntax, or prompt syntax.
+
+Headline treatment:
+- Use {headline_mode}.
+- Exact headline text: {title or '未提供'}
+- Place the headline at the top only.
+- Make it visually dominant, like an on-air Taiwanese TV news mega headline.
+- Use layered Chinese broadcast typography: thick strokes, outline, shadow, strong contrast.
+- Render the headline once only. Do not duplicate names or headline fragments.
+
+User-provided text to arrange:
+{NL.join(text_group_lines)}
+
+Text arrangement rules:
+- Use only the user-provided Traditional Chinese text above.
+- Do not add any words, captions, labels, English, random numbers, or fake Chinese.
+- Do not rewrite or summarize the text.
+- Do not delete text because the layout is crowded.
+- If crowded, reduce font size, line spacing, or module padding, or rearrange the layout.
+
+Photo / video / document areas to leave blank:
+{NL.join(visual_zone_lines)}
+
+Image-zone rules:
+- These are blank areas for later post-production.
+- Keep interiors clean and empty.
+- No fake photo, no fake screenshot, no icon, no text, no label, no decoration inside.
+- Do not show words such as photo, image box, placeholder, section, source marker, or debug label.
+- Keep text and effects outside these blank zones.
+
+Broadcast layout direction:
+- {suggested_layout}
+- Think like a real news CG artist, not a parser.
+- Do not make it look like a website, app UI, SaaS dashboard, magazine cover, social media card, or movie poster.
+- The final image should look ready for a Taiwanese TV news broadcast.
+""".strip()
+
+def _frame_visual_intent(frame_type: str, reporter_subtype: str, headline_mode: str) -> str:
+    if frame_type == "標大框":
+        return (
+            "top 35 to 45 percent reserved for a dominant mega headline; "
+            "lower area should be arranged like a real Taiwanese news CG, not a web UI; "
+            "use portrait strips, evidence boards, warning callouts, legal item boards, and editorial blank image zones when the script implies them; "
+            "keep all provided text and image zones visible; never delete content because of crowding"
+        )
+    if frame_type == "記者說新聞":
+        if reporter_subtype == "表格數據型":
+            return (
+                "top headline band, central table-like infographic area, clean rows and columns, "
+                "right-bottom ticker exclusion area kept as background only"
+            )
+        if reporter_subtype == "卡片條列型":
+            return (
+                "top headline band, six compact information cards arranged in a clean grid, "
+                "right-bottom ticker exclusion area kept as background only"
+            )
+        if reporter_subtype == "敘事觀點型":
+            return (
+                "top headline band, two-column explanatory news layout with calm narrative visual rhythm, "
+                "left protected asset zone and right analysis card, right-bottom ticker exclusion area kept as background only"
+            )
+        return (
+            "top headline band, left facts/data column and right explanation column, "
+            "right-bottom 588x90 ticker exclusion area kept as background only"
+        )
+    if frame_type == "框訊・數據分析":
+        return "data-driven news infographic layout with large number cards, chart-like blocks, expert quote panel, clean hierarchy"
+    if frame_type == "框訊・流程關係":
+        return "relationship flow diagram layout with role nodes, connector lines, one protected large photo placeholder, clean investigative news graphics"
+    if frame_type == "框訊・對打時間軸":
+        return "debate and timeline news layout with two opposing quote zones, one large protected media placeholder, bottom timeline strip"
+    if frame_type == "框訊・多圖對比":
+        return "multi-image comparison news layout with several clean protected photo placeholders, comparison cards, clear left-right contrast"
+    return "professional modular TV news graphic layout with clear headline band and protected asset placeholders"
+
+
+def _style_visual_intent(style_name: str) -> str:
+    if style_name == AI_FREE_STYLE_NAME or str(style_name).startswith("AI自由"):
+        return (
+            "AI FREE STYLE MODE: do not restrict the image model to 民生消費 / 社會案件 / 體育競技 / 全球財經 / "
+            "突發重磅 / 選情政論 / 科技政策 / 綠能永續 / 現代民俗 / 生醫科技. "
+            "The model may choose any suitable broadcast-news color palette, typography style, background texture, "
+            "lighting mood, card shape, faction color coding, headline treatment, and composition based on the content. "
+            "Keep it professional Taiwanese TV news CG, high readability, and obey all Asset Protection Zones and text whitelist."
+        )
+    style = get_style_config(style_name)
+    return (
+        f"style theme: {style.get('theme', 'professional TV news')}; "
+        f"visual texture: {style.get('ui', 'clean broadcast graphics')}; "
+        f"palette direction: {style.get('palette', 'broadcast blue and neutral dark')}; "
+        f"accent: {style.get('highlight', 'clean highlight color')}"
+    )
+
+
+
+def _content_palette_hint(script: str, frame_type: str) -> str:
+    """依內容給 Gemini Image 一個可自由發揮的底圖/配色方向，不新增新聞事實。"""
+    s = script
+    if _contains_any(s, ["共諜", "起訴", "貪污", "羈押", "檢", "司法", "三重罪", "求刑", "洗錢"]):
+        return "legal/investigative palette: deep navy, black, warning yellow, restrained red accents, serious prosecution mood"
+    if _contains_any(s, ["國防", "軍購", "軍史", "營區", "國軍", "海馬士", "軍", "統戰"]):
+        return "defense/political-security palette: dark blue, steel gray, military olive, alert red, metallic broadcast texture"
+    if _contains_any(s, ["鼠", "蟑", "環境", "防治", "衛生", "市府"]):
+        return "public-safety/civic issue palette: gritty dark gray, urban green, caution red, yellow highlights, textured city background"
+    if _contains_any(s, ["股", "財經", "億", "匯率", "營收", "市場", "投資"]):
+        return "financial palette: deep navy, black, gold, cyan data glow, premium dashboard texture"
+    if _contains_any(s, ["旅遊", "消費", "美食", "百貨", "黃金週", "民生"]):
+        return "consumer/lifestyle palette: clean blue, warm orange, soft beige, frosted glass, lighter energetic background"
+    if frame_type == "記者說新聞":
+        return "explanatory news palette: clean blue-gray, calm contrast, readable cards, restrained accent color"
+    if frame_type == "標大框":
+        return "breaking-news mega headline palette: high contrast dark texture, strong red/yellow/white accents, bold broadcast energy"
+    return "professional Taiwanese TV news palette: dark broadcast texture, blue-gray base, red/yellow accents, high readability"
+
+
+def _background_visual_directive(script: str, frame_type: str, style_name: str, background_mode: str) -> str:
+    """v20.6：底圖風格配色。AI 自動時，交給 Gemini Image 依內容自由配色與生成底圖。"""
+    base_style = _style_visual_intent(style_name)
+    content_hint = _content_palette_hint(script, frame_type)
+
+    if background_mode.startswith("AI自由") or background_mode.startswith("AI自動"):
+        return f"""
+AI FREE STYLE / BACKGROUND / PALETTE / TYPOGRAPHY MODE is ENABLED.
+Do NOT restrict the design to the fixed Visual Director style library. The model may freely choose any professional Taiwanese broadcast-news style based on the story content, conflict level, topic, and emotional tone.
+Suggested content-sensitive direction: {content_hint}.
+The model may choose its own color palette, headline treatment, card shapes, faction labels, lighting, background texture, motion texture, typography weight, and layout rhythm.
+The background may include abstract broadcast textures such as newsroom gradients, metallic panels, civic map texture, data grid, subtle smoke, caution pattern, glass panels, paper texture, court/investigation texture, military texture, or dark studio lighting when appropriate.
+CRITICAL: freedom only applies to style, palette, background, and layout arrangement. It must never create extra people, extra objects, extra facts, extra logos, extra text, random labels, fake screenshots, or fake photos inside asset zones.
+CRITICAL: background and palette must respect all Asset Protection Zones; no texture, icon, stamp, brush, shadow, or text may invade the empty photo/video placeholders.
+Keep approved Traditional Chinese typography readable and accurate.
+""".strip()
+
+    if background_mode.startswith("沿用"):
+        return f"""
+Use the selected Visual Director style library as the background and palette source.
+{base_style}.
+Create a polished broadcast background consistent with this style, but do not invent text or facts.
+All background textures must stay outside protected asset interiors and preserve clean 40px safety buffers.
+""".strip()
+
+    return f"""
+Use a stable dark professional TV news background: charcoal, deep navy, subtle metallic texture, soft vignette, restrained red/yellow highlights.
+Avoid experimental colors. Keep high readability and strict asset protection.
+Reference style if needed: {base_style}.
+""".strip()
+
+
+def _asset_zone_prompt(asset_zones: List[str], transparent_holes: bool) -> str:
+    if not asset_zones:
+        return (
+            "No explicit asset markers were provided; if a photo area is needed, create one clean protected blank photo placeholder."
+        )
+    zone_list = "\n".join([f"- {z}" for z in asset_zones[:12]])
+    fill_style = (
+        "plain transparent-looking or light neutral empty rectangles"
+        if transparent_holes else
+        "clean dark or neutral empty rectangles with subtle broadcast frame"
+    )
+    return f"""
+Newsroom post-production blank image zones requested by the user:
+{zone_list}
+For each requested image/photo/video/document marker, reserve a clean blank area in the CG layout.
+These areas are for real post-production material, not AI-generated content.
+Interior must be {fill_style}.
+No fake photos, no fake screenshots, no icons, no labels, no text, no stamps, no brush strokes, no arrows, no decorations inside.
+Keep at least 40px clean safety buffer around every blank image zone.
+Do not render marker words such as 定圖, 圖片, 開框roll, 外觀照, LINE截圖.
+If the layout is crowded, rearrange modules or reduce font size. Do not invade image zones and do not delete user-provided text.
+""".strip()
+
+
+def build_image_prompt_translator(
+    script: str,
+    frame_type: str,
+    style_name: str,
+    headline_mode: str,
+    reporter_subtype: str,
+    use_safe_zone: bool,
+    no_text_mode: bool = False,
+    transparent_holes: bool = False,
+    background_mode: str = "AI自動判斷（依內容自由配色＋生成底圖）",
+) -> Dict[str, str]:
+    """
+    產生 Gemini Image 專用 prompt。
+    v20.5.2 重點：
+    1) 使用者仍可輸入 (#定圖)、(圖片)、(定國防部外觀照)、#筆刷、#蓋章。
+    2) 這些會被轉成圖片模型可理解的 Asset Protection Zone / broadcast module。
+    3) 中文採白名單：只允許生成使用者稿內提供的繁體中文，不允許補字、亂碼、翻譯。
+    """
+    parsed = parse_user_script(script)
+    asset_zones = _extract_asset_zones(script)
+    approved_text = _extract_approved_text_whitelist(script)
+    title = _strip_director_syntax(parsed.title)[:60]
+    visual_compiler = build_visual_token_compiler_block(script, frame_type, headline_mode)
+    # v20.6.6：不要再把原始 DSL 長文直接餵給圖片模型；改用已去符號、去繼承的 compiler 摘要。
+    content_hint = _strip_director_syntax(script)[:260]
+
+    if no_text_mode:
+        text_policy = (
+            "Do not render any readable text, Chinese characters, English letters, numbers, captions, labels, watermarks, logos, or fake UI text. "
+            "Leave headline and all text areas as clean graphic blocks/placeholders for post-production typography."
+        )
+        text_whitelist_block = "Approved text whitelist: NONE, pure background/layout mode."
+        negative_text = "no readable text, no Chinese characters, no English letters, no numbers, no typography"
+    else:
+        whitelist = "\n".join([f"- {t}" for t in approved_text]) or "- （使用者未提供可上畫面文字，請保持文字區空白）"
+        text_policy = (
+            "Render ONLY the exact Traditional Chinese text in the approved whitelist below. "
+            "Use the whitelist as the only source of readable Chinese typography. "
+            "Never add, rewrite, translate, summarize, or invent any text. "
+            "Never duplicate names, numbers, keywords, or headline fragments. "
+            "Do not omit approved text from the user-provided layout. "
+            "Do not render internal instruction labels, debug labels, card labels, image-box labels, source-marker labels, prompt syntax, or English labels. "
+            "If spacing is tight, reduce font size, line spacing, or rearrange modules instead of deleting text. "
+            "No fake Chinese glyphs, no random numbers, no random English letters."
+        )
+        text_whitelist_block = f"Approved Traditional Chinese text whitelist:\n{whitelist}"
+        negative_text = "no extra text beyond whitelist, no missing approved text, no internal labels, no section labels, no card labels, no image box labels, no placeholder labels, no source marker labels, no compiler words, no debug labels, no fake photo inside blank image zones, no icon inside blank image zones, no text inside blank image zones, no gibberish Chinese, no fake characters, no random English letters, no random numbers"
+
+    safe_zone_policy = (
+        "Keep the bottom-right 588x90 ticker-safe zone as background texture only, no cards, no icons, no text, no decoration."
+        if use_safe_zone or frame_type == "記者說新聞" else
+        "No hardware ticker exclusion zone is required, but keep generous margins and avoid clutter."
+    )
+
+    senior_news_cg_policy = build_senior_news_cg_designer_policy()
+
+    clean_render_policy = """
+CLEAN RENDER POLICY:
+Use the blueprint as layout guidance, not as visible text.
+Never render internal words such as section card, information card, image box, asset box, mandatory, invalid render, whitelist, compiler, source marker, debug label, or placeholder label.
+Keep all user-approved Chinese text visible, but do not show rule labels.
+Preserve the requested empty media/photo areas as blank frames.
+If the page is crowded, improve spacing, reduce font size, or rearrange; do not omit cards or approved text.
+""".strip()
+
+    zero_assumption_policy = """
+ZERO ASSUMPTION MODE.
+Do not infer missing broadcast UI.
+Do not create ticker, breaking news strips, live tags, channel logos, timestamps, watermarks, lower thirds, news crawlers, extra banners, fake subtitles, or bottom information bars.
+Only render broadcast UI explicitly tagged by the user.
+If not explicitly tagged: leave the area empty.
+EMPTY > ASSUMPTION. Never decorate automatically.
+Content-specific logos explicitly provided by the user script may be rendered as content icons, but do not invent channel branding.
+""".strip()
+
+    if has_explicit_brush_tag(script):
+        brush_policy = (
+            "Explicit brush tag detected. Use at most 1 to 2 brush effects, only for the text directly attached to the brush tag, "
+            "never for normal body text, never over asset zones."
+        )
+    else:
+        brush_policy = (
+            "No explicit brush tag detected. Brush effects are completely forbidden on this page. "
+            "Do not create brush strokes, brush banners, smeared paint highlights, or brush-style summary labels."
+        )
+
+    negative_fx = "" if has_explicit_brush_tag(script) else ", no brush stroke, no brush banner, no paint smear highlight"
+
+    positive_prompt = f"""
+Professional Taiwanese TV news CG, 1920x1080 horizontal 16:9, polished broadcast graphics, clean composition, high readability, not a poster, not a web page.
+
+{senior_news_cg_policy}
+
+{visual_compiler}
+
+Layout intent: {_frame_visual_intent(frame_type, reporter_subtype, headline_mode)}.
+Headline area: {headline_mode}; title meaning reference only: {title or 'news headline'}.
+Background and color strategy: {_background_visual_directive(script, frame_type, style_name, background_mode)}.
+
+ASSET PROTECTION ZONE POLICY:
+{_asset_zone_prompt(asset_zones, transparent_holes)}
+
+Broadcast module translation:
+- (#色塊) / (色塊) means information card blocks.
+- (#蓋章) means a stamp-style emphasis module placed OUTSIDE all asset zones; do not infer stamp from ordinary text.
+- BRUSH EFFECT IS EXPLICIT ONLY: create brush strokes ONLY when the user explicitly writes (#筆刷), (筆刷), #筆刷, ---筆刷, or 筆刷效果.
+- If no explicit brush tag exists in the user script, brush strokes are forbidden.
+- Do not convert <文字>, 「quotes」, numbers, conflict words, emotional words, or body text into brush strokes.
+- Do not duplicate any body sentence into a separate brush/stamp/sticker module unless that exact line is explicitly tagged. Only promote a sentence once.
+- (#打卡) means a location badge with a map-pin icon, placed outside asset zones.
+- <文字> means high-priority headline emphasis or impact typography; render the text exactly if it appears in the whitelist, but it is NOT a brush trigger.
+
+Explicit brush policy for this page:
+{brush_policy}
+
+Ticker/safe zone: {safe_zone_policy}
+
+{clean_render_policy}
+
+ZERO ASSUMPTION / NO EXTRA UI:
+{zero_assumption_policy}
+
+Content mood reference only, do not invent facts or layout from this raw text summary: {content_hint}
+
+TEXT POLICY:
+{text_policy}
+{text_whitelist_block}
+
+Use layered broadcast panels, subtle shadows, crisp edges, strong hierarchy, high contrast, newsroom CG design.
+No horror, no distorted faces, no creepy anatomy, no surreal artifacts. Real photos are NOT generated inside asset zones; those areas stay empty for post-production insertion.
+""".strip()
+
+    negative_prompt = f"""
+{negative_text}{negative_fx}, no unrequested ticker, no unrequested breaking news strip, no unrequested LIVE tag, no unrequested channel logo, no unrequested timestamp, no unrequested lower-third, no unrequested bottom news bar, no watermark, no QR code, no extra news facts, no creepy face, no distorted human, no horror mood, no movie poster, no magazine cover, no social media post, no clutter, no overlapping text on asset zones, no labels inside empty asset zones, no brackets, no prompt syntax, no [圖], no (#定圖), no (圖片), no UI debug labels, no stamp or brush overlapping protected image boxes, no duplicated headline text, no duplicated names, no repeated keywords, no concatenating body text into headline
+""".strip()
+
+    return {
+        "positive_prompt": positive_prompt,
+        "negative_prompt": negative_prompt,
+        "copy_prompt": positive_prompt + "\n\nNEGATIVE PROMPT:\n" + negative_prompt,
+        "note": f"v20.6.6 會先做 Visual Token Compiler：標題/卡片/圖區分層，素材標記轉成 Asset Protection Zone，文字採白名單；筆刷只有明確標註才生成；Zero Assumption 禁止自行補跑馬/快訊/LIVE/台標；底圖配色模式：{background_mode}",
+    }
 
 def build_cg_preview_html(script: str, frame_type: str, headline_mode: str, reporter_subtype_override: str = "", conclusion: Dict[str, str] | None = None) -> str:
     """產生 16:9 CG 版面預覽。這不是成品圖，是用來檢查標題、圖區、模組是否會互相壓到。"""
@@ -1275,8 +2199,8 @@ HOLE_PUNCHER_V66 = r"""
 # =========================================================
 # 8. UI
 # =========================================================
-st.title("🎬 Visual Director v19.6｜防亂生文字版")
-st.caption("API 串接＋版型/子類型/密度/語氣判斷＋安全區防呆＋CG預覽＋完整打洞機 v66｜Producer Huifen Edition")
+st.title("🎬 Visual Director v20.6.6｜Visual Token Compiler Mode")
+st.caption("雙模型手選；左側不再放預設風格／預設模板；以 v20.5 導演系統頁面為唯一判斷來源；Prompt 成本監控；防亂生文字稽核；CG Prompt Translator＋素材保護區＋中文白名單＋AI自由風格排版＋Explicit Brush Only＋Zero Assumption｜Producer Huifen Edition")
 
 with st.sidebar:
     st.header("🔑 Gemini API")
@@ -1294,13 +2218,32 @@ with st.sidebar:
     )
 
     st.divider()
-    st.header("🎛️ 預設規格")
-    default_style = st.selectbox("預設風格", list(STYLE_CONFIG.keys()), index=1)
-    default_frame = st.selectbox("預設框型", list(FRAME_TEMPLATES.keys()), index=0)
+    st.header("🤖 模型設定")
+    selected_model_label = st.radio(
+        "AI 模型手選",
+        list(AI_MODELS.keys()),
+        index=0,
+        help="💸 最省適合大量試稿；⚡ 中間適合一般修稿。左側不再提供預設風格/預設模板，避免與 v20.5 導演系統頁面互相打架。",
+    )
+    CURRENT_MODEL = AI_MODELS[selected_model_label]
+    st.caption(f"目前使用模型：`{CURRENT_MODEL}`")
+
+    with st.expander("💰 本次成本估算單價", expanded=False):
+        price = MODEL_PRICE_TABLE.get(CURRENT_MODEL, {"input": 0.0, "output": 0.0})
+        st.caption(f"Input：${price['input']} / 1M tokens")
+        st.caption(f"Output：${price['output']} / 1M tokens")
+        st.caption("實際金額仍以 Google Billing / API Spend 為準。")
+
+    # v20.6.6 Visual Token Compiler Mode:
+    # 左側不再放「預設風格 / 預設模板」。
+    # 風格與模板只以 v20.5 導演系統頁面當下選擇與 AI 判斷為準。
+    default_style = AI_FREE_STYLE_NAME
+    default_frame_ui = "標大框"
+    default_frame = resolve_frame_for_engine(default_frame_ui, "")
 
     st.divider()
     st.header("🧪 本機測試")
-    if st.button("執行 v19.6 導演系統測試"):
+    if st.button("執行 v20.6.6 導演系統測試"):
         try:
             for message in run_self_tests():
                 st.success(message)
@@ -1312,19 +2255,21 @@ with st.expander("📘 v17 圖區不壓圖規則", expanded=False):
     st.markdown(
         """
 **核心原則：**  
-`[圖]`、`[圖-左主]`、`(#定xxx)`、`(LINE截圖)` 不是要顯示在成品上的文字，而是系統用來判斷「後製真實照片留白區」的版型語法。
+`[圖]`、`[圖-左主]`、`(#定圖)`、`(圖片)`、`(定國防部外觀照)`、`(#開框roll)`、`(LINE截圖)` 不是要顯示在成品上的文字，而是系統用來判斷「後製真實素材保護區」的版型語法。
 
 最終成品必須：
 - 刪除所有 `[圖]` 與說明文字。
 - 保留乾淨空白區給後製塞圖。
-- 任何文字、icon、色塊、陰影、箭頭都不能壓到圖區。
+- 任何文字、icon、色塊、陰影、箭頭、筆刷、AI 自動生成底圖紋理、蓋章都不能壓到素材框。
+- 素材框優先權高於文字完整度；如果版面衝突，寧可縮字或改排版，也不能壓圖。
 """
     )
     st.table(
         pd.DataFrame(
             [
                 {"語法": "[圖] / [圖-左主]", "系統動作": "建立硬留白圖區", "成品處理": "刪除標籤，只留空洞"},
-                {"語法": "(#定忠孝橋)", "系統動作": "視為指定真實素材區", "成品處理": "刪除文字，不壓圖"},
+                {"語法": "(#定忠孝橋) / (定國防部外觀照)", "系統動作": "視為指定真實素材保護區", "成品處理": "刪除標籤，只留後製素材框"},
+                {"語法": "(圖片) / (#開框roll) / (LINE截圖)", "系統動作": "建立影片/照片/截圖保護框", "成品處理": "框內完全空白，不放文字或 icon"},
                 {"語法": "(色塊)", "系統動作": "生成資訊卡", "成品處理": "刪除指令文字"},
                 {"語法": "(對話框)", "系統動作": "生成說話框", "成品處理": "刪除指令文字"},
                 {"語法": "#筆刷", "系統動作": "生成筆刷強調", "成品處理": "刪除指令文字"},
@@ -1335,7 +2280,7 @@ with st.expander("📘 v17 圖區不壓圖規則", expanded=False):
 
 tab_ai, tab_prompt, tab_hole = st.tabs([
     "🤖 AI 拆稿",
-    "🎬 v19.6 導演系統",
+    "🎬 v20.5 導演系統",
     "🖍️ 華視打洞機",
 ])
 
@@ -1343,19 +2288,33 @@ tab_ai, tab_prompt, tab_hole = st.tabs([
 with tab_ai:
     st.subheader("🤖 AI 只負責拆稿，不負責壓版")
     news_text = st.text_area("貼上原始新聞稿 / 原始資料", height=220)
-    ai_frame_type = st.selectbox("AI 要整理成哪種框訊", list(FRAME_TEMPLATES.keys()), index=list(FRAME_TEMPLATES.keys()).index(default_frame))
+    ai_frame_type_ui = st.selectbox("AI 要整理成哪種模板", UI_FRAME_OPTIONS, index=UI_FRAME_OPTIONS.index(default_frame_ui))
+    ai_frame_type = resolve_frame_for_engine(ai_frame_type_ui, news_text)
 
     if st.button("✨ AI 產生框訊文字稿", type="primary"):
         if not news_text.strip():
             st.warning("請先貼上新聞稿。")
         else:
             with st.spinner("AI 製作人拆稿中..."):
-                result = generate_ai_frame_content(news_text, ai_frame_type, get_api_key())
+                result, usage_report = generate_ai_frame_content(
+                    news_text,
+                    ai_frame_type,
+                    get_api_key(),
+                    CURRENT_MODEL,
+                    selected_model_label,
+                )
                 if result:
                     st.session_state["ai_frame_result"] = result
+                    st.session_state["ai_usage_report"] = usage_report
+                    st.session_state["ai_fact_audit"] = audit_extra_facts(news_text, result)
                     st.success("已生成，可複製到 v17 自動導演頁微調。")
 
     if st.session_state.get("ai_frame_result"):
+        monitor_l, monitor_r = st.columns(2)
+        with monitor_l:
+            render_usage_report(st.session_state.get("ai_usage_report"))
+        with monitor_r:
+            render_fact_audit(st.session_state.get("ai_fact_audit"))
         st.text_area("AI 生成結果", st.session_state["ai_frame_result"], height=320)
         if st.button("➡️ 套用到指令編譯"):
             title = extract_section(st.session_state["ai_frame_result"], "TITLE")
@@ -1365,7 +2324,7 @@ with tab_ai:
 
 
 with tab_prompt:
-    st.subheader("🎬 v19.6 導演系統＋結論模組＋最終產圖指令")
+    st.subheader("🎬 v20.5 導演系統＋結論模組＋CG Prompt Translator")
 
     c1, c2 = st.columns([1.25, 0.75])
 
@@ -1383,6 +2342,7 @@ with tab_prompt:
 
     with c2:
         st.markdown("### 🛠️ 編譯設定")
+        selected_template_ui = st.selectbox("模型模板選單", UI_FRAME_OPTIONS, index=UI_FRAME_OPTIONS.index(default_frame_ui))
         auto_director = st.toggle("🎬 啟動自動導演判斷", value=True)
         auto_patch = st.toggle("自動補必要 [圖] 區（預設關閉，避免自動生成你沒給的文字）", value=False)
         if script.strip():
@@ -1402,20 +2362,41 @@ with tab_prompt:
             }
 
         if auto_director:
-            frame_type = director["frame_type"]
+            if selected_template_ui == "框訊":
+                frame_type = resolve_frame_for_engine("框訊", script)
+                st.success(f"模板：框訊｜AI 自主判斷細類：{frame_type}")
+            else:
+                frame_type = selected_template_ui
+                st.success(f"模板：{frame_type}")
             detected_style_name = director["style_name"]
-            st.success(f"自動判斷框型：{frame_type}")
             st.info(f"自動判斷風格：{detected_style_name}")
         else:
-            frame_type = st.selectbox("框型", list(FRAME_TEMPLATES.keys()), index=list(FRAME_TEMPLATES.keys()).index(default_frame))
+            frame_type = resolve_frame_for_engine(selected_template_ui, script)
             detected_style_name = default_style
+            if selected_template_ui == "框訊":
+                st.caption(f"框訊細類由系統判斷：{frame_type}")
 
-        manual_style_override = st.toggle("手動改風格", value=False, help="自動判斷錯時打開，例如旅遊新聞改成民生消費。")
-        if manual_style_override:
-            style_name = st.selectbox("手動選擇風格", list(STYLE_CONFIG.keys()), index=list(STYLE_CONFIG.keys()).index(detected_style_name) if detected_style_name in STYLE_CONFIG else 0)
+        style_layout_mode = st.radio(
+            "風格與排版判斷",
+            ["AI 自由決定風格、配色、字形與排版（不受固定風格庫限制）", "手動選擇固定風格庫"],
+            index=0,
+            horizontal=False,
+            help="AI 自由決定：不侷限在下方固定風格庫，AI 可依內容自行決定配色、底圖、字形、色塊與排版；手動選擇：才使用固定風格庫。",
+        )
+        if style_layout_mode.startswith("AI 自由決定"):
+            style_name = AI_FREE_STYLE_NAME
+            layout_mode = "DYNAMIC"
+            ai_color = True
+            st.success("AI 自由模式：不套用固定風格庫，AI 會依新聞內容自行決定風格、配色、字形與排版。")
+            st.caption(f"系統參考題材判斷：{detected_style_name}；但不會被這個風格綁死。")
         else:
-            style_name = detected_style_name
-            st.caption(f"目前使用風格：{style_name}")
+            style_name = st.selectbox(
+                "手動選擇風格",
+                list(STYLE_CONFIG.keys()),
+                index=list(STYLE_CONFIG.keys()).index(detected_style_name) if detected_style_name in STYLE_CONFIG else 0,
+            )
+            layout_mode = st.radio("排版模式", ["GRID", "DYNAMIC"], horizontal=True)
+            ai_color = st.toggle("AI 視覺主權：依新聞情緒配色", value=True)
 
         if frame_type == "記者說新聞":
             st.markdown("### 🧠 記者說新聞子類型")
@@ -1434,13 +2415,17 @@ with tab_prompt:
         else:
             reporter_subtype = "N/A"
 
-        headline_mode = st.radio(
-            "標題行數（手動選擇）",
-            ["一行大標題", "兩行大標題"],
-            index=1,
-            horizontal=True,
-            help="不管選一行或兩行，標題都會鎖在版面最上方。",
-        )
+        if frame_type == "標大框":
+            headline_mode = "兩行大標題"
+            st.info("標大框：維持原本 MEGA LARGE 兩行大標設定。")
+        else:
+            headline_mode = st.radio(
+                "標題行數（手動選擇）",
+                ["一行大標題", "兩行大標題"],
+                index=1,
+                horizontal=True,
+                help="不管選一行或兩行，標題都會鎖在版面最上方。",
+            )
 
         if auto_patch:
             script_for_prompt = auto_patch_missing_image_zones(script, frame_type)
@@ -1449,9 +2434,7 @@ with tab_prompt:
         else:
             script_for_prompt = script
 
-        layout_mode = st.radio("排版模式", ["GRID", "DYNAMIC"], horizontal=True)
         icon_style = st.radio("ICON 質感", ["2D", "3D"], index=1, horizontal=True)
-        ai_color = st.toggle("AI 視覺主權：依新聞情緒配色", value=True)
         if frame_type == "記者說新聞":
             use_safe_zone = True
             st.warning("記者說新聞：右下跑馬安全區 588×90 已強制鎖定，不能關閉。")
@@ -1463,6 +2446,17 @@ with tab_prompt:
         st.caption(f"建議位置：{conclusion['position']}")
 
         notes = st.text_area("補充導演備註", value="所有圖區都要留白，後製會塞真實照片；文字絕對不能壓到圖。", height=110)
+
+        st.markdown("### 🧼 Gemini Image Senior News CG Translator")
+        st.caption("圖片模型會用『20年新聞台CG美術』邏輯排版：只用你給的字、圖區留白、不腦補。")
+        image_no_text_mode = False
+        image_transparent_holes = st.toggle(
+            "圖區做成乾淨空洞 / 淺色留白",
+            value=True,
+            help="讓圖片模型把 [圖]、(#定圖)、(圖片)、(定國防部外觀照) 理解成後製照片區，不要畫內容進去。",
+        )
+        image_background_mode = "AI自由決定（不受固定風格庫限制：依內容決定配色、底圖、字形與排版）" if style_layout_mode.startswith("AI 自由決定") else "沿用目前風格庫"
+        st.caption(f"Gemini Image 風格來源：{image_background_mode}")
 
     final_prompt, parsed = build_final_prompt_v18(
         script=script_for_prompt,
@@ -1501,7 +2495,7 @@ with tab_prompt:
         for warning in parsed.warnings:
             st.warning(warning)
 
-    st.markdown("### 🧪 v19.6 防呆檢查")
+    st.markdown("### 🧪 v20.6.6 防呆檢查")
     for item in build_quality_check(parsed, frame_type, reporter_subtype, use_safe_zone):
         st.checkbox(item, value=True, disabled=True)
 
@@ -1518,7 +2512,7 @@ with tab_prompt:
         scrolling=False,
     )
 
-    st.markdown("### 🔥 最終產圖指令")
+    st.markdown("### 🔥 導演完整指令（給文字模型 / 版型檢查用）")
     if auto_director:
         st.markdown("### 🎬 自動導演判斷報告")
         director["reporter_subtype"] = reporter_subtype
@@ -1527,6 +2521,30 @@ with tab_prompt:
         director["conclusion_position"] = conclusion["position"]
         st.json(director)
     st.code(final_prompt, language="markdown")
+
+    st.markdown("### 🧼 Gemini Image 專用 Prompt Translator")
+    st.caption("這份才建議丟到 Gemini 生成圖片；它會把 (#定圖)、(圖片)、(定國防部外觀照)、#蓋章 轉成影像模型看得懂的新聞台語法；#筆刷／筆刷效果 只有明確標註才會生成，不會把普通內文自動升級成筆刷。保留『素材框不壓圖』與『中文字白名單』，並可依「風格與排版判斷」自由決定風格、配色、字形、底圖與排版，不受固定風格庫限制。")
+    image_prompt_pack = build_image_prompt_translator(
+        script=script_for_prompt,
+        frame_type=frame_type,
+        style_name=style_name,
+        headline_mode=headline_mode,
+        reporter_subtype=reporter_subtype,
+        use_safe_zone=use_safe_zone,
+        no_text_mode=image_no_text_mode if 'image_no_text_mode' in locals() else False,
+        transparent_holes=image_transparent_holes if 'image_transparent_holes' in locals() else True,
+        background_mode=image_background_mode if 'image_background_mode' in locals() else "AI自動判斷（依內容自由配色＋生成底圖）",
+    )
+    st.info(image_prompt_pack["note"])
+    render_ui_audit(audit_extra_ui(image_prompt_pack["copy_prompt"]))
+    st.text_area("✅ Gemini Image Positive Prompt", image_prompt_pack["positive_prompt"], height=260)
+    st.text_area("🚫 Negative Prompt / 避免項", image_prompt_pack["negative_prompt"], height=150)
+    st.download_button(
+        "下載 Gemini Image Prompt.txt",
+        data=image_prompt_pack["copy_prompt"],
+        file_name="gemini_image_prompt_v20_6.txt",
+        mime="text/plain",
+    )
 
 
 with tab_hole:
