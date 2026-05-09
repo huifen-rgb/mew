@@ -1379,7 +1379,7 @@ def _forbidden_helper_text_ban() -> str:
     return (
         "Never render internal layout/helper text, ratio labels, or placeholder labels, including: "
         "左上圖, 左下圖, 右上圖, 右下圖, 中上文字色塊, 中下文字色塊, 左：, 中：, 右：, 左:, 中:, 右:, 右ROLL框, 左ROLL框, 右ROLL, 左ROLL, 右ROLL=, 左ROLL=, 右ROLL：, 左ROLL：, 右邊ROLL框, 左邊ROLL框, 右邊roll框, 左邊roll框, +++ROLL+++, ++ROLL++, +++右ROLL+++, +++左ROLL+++, 開框ROLL, 開框roll, (開框roll), ROLL框, "
-        "4:3, 4:5, 圖, 色塊, 打卡LOGO, 打卡地點, 打卡, 後封保用照片, 後製確認照片, 後製保留照片, "
+        "4:3, 4:5, 圖, 色塊, 打卡LOGO, 打卡地點, 打卡, 假人ICON, 假人icon, 假人大頭, 人形ICON, 人物ICON, 對話框, 說話框, speech bubble, 後封保用照片, 後製確認照片, 後製保留照片, "
         "真實視頻ROLL插投, 真實影片ROLL插投, 真實視頻ROLL, 真實影片ROLL, ROLL/視頻, ROLL/視ideo, 視頻, 影片, video, Video, 編輯圖片區, 圖片區, 4:5商比, 4:3商比, 商比, placeholder, image box, photo, section, card, source marker, debug label."
     )
 
@@ -1431,10 +1431,322 @@ def _approved_text_block_for_prompt(script: str) -> str:
         lines.append("Approved visible text: none")
     return "\n".join(lines)
 
+
+# =========================================================
+# v22.10 Mandatory Graphic Module Lock：假人ICON / 對話框 / 蓋章 / 筆刷
+# - 假人 ICON 改成數量感知：女假人ICON = 1 個女性圖示；男假人ICON = 1 個男性圖示
+# - 只有明確寫「數個 / 多個 / 群 / 2個 / 3個...」才允許生成人群
+# =========================================================
+FAKE_PERSON_ICON_PATTERN = re.compile(
+    r"(?:數個\s*假人\s*(?:ICON|icon)|假人\s*(?:ICON|icon)|假人大頭|人形\s*(?:ICON|icon)|人物\s*(?:ICON|icon)|人形圖示|人物圖示|女假人\s*(?:ICON|icon)|男假人\s*(?:ICON|icon)|做女假人\s*(?:ICON|icon)|做男假人\s*(?:ICON|icon))",
+    re.IGNORECASE,
+)
+SPEECH_BUBBLE_PATTERN = re.compile(
+    r"(?:大對話框|小對話框|拉對話框|\+對話框|對話框|說話框|speech\s*bubble)",
+    re.IGNORECASE,
+)
+STAMP_PATTERN = re.compile(
+    r"(?:\(#?蓋章[^)]*\)|\(\+蓋章[^)]*\)|\[#?蓋章[^\]]*\]|[#＃]蓋章|蓋章效果|蓋章字|---\s*蓋章|——\s*蓋章)",
+    re.IGNORECASE,
+)
+BRUSH_PATTERN = re.compile(
+    r"(?:\(#?筆刷[^)]*\)|\(\+筆刷[^)]*\)|\[#?筆刷[^\]]*\]|[#＃]筆刷|筆刷效果|\+筆刷字|---\s*筆刷|——\s*筆刷)",
+    re.IGNORECASE,
+)
+
+ICON_NUMBER_MAP: Dict[str, int] = {
+    "一": 1, "二": 2, "兩": 2, "三": 3, "四": 4, "五": 5,
+    "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
+}
+
+
+def _count_pattern_from_script(script: str, pattern: re.Pattern) -> int:
+    """計算原稿裡的 graphic module 次數；至少抓出 1，避免高密度稿件被 Gemini 當裝飾省略。"""
+    matches = pattern.findall(script or "")
+    return len(matches)
+
+
+def _normalize_graphic_marker_key(marker: str) -> str:
+    """同一個圖形標記只算一次；避免 (#做男假人ICON) 又被整行再次掃到。"""
+    t = str(marker or "").strip()
+    t = t.replace("（", "(").replace("）", ")").replace("＋", "+").replace("＃", "#")
+    t = re.sub(r"\s+", "", t)
+    # 去掉外層括號與常見符號，只保留真正的控制詞。
+    t = t.strip("()[]【】{}<>+-=：:;；,，。 ")
+    return t.lower()
+
+
+def _extract_parenthetical_and_line_markers(script: str) -> List[str]:
+    """
+    抓出圖形模組標記，供數量感知 parser 使用。
+    v22 patch：優先吃括號/方括號內的明確標記；整行只在沒有括號標記時才當作 fallback，
+    避免「46歲車手 (#做女假人ICON)」被算成第二個女假人。
+    """
+    if not script:
+        return []
+    markers: List[str] = []
+    seen: set[str] = set()
+
+    def add_marker(m: str) -> None:
+        key = _normalize_graphic_marker_key(m)
+        if not key or key in seen:
+            return
+        if not any(k in m for k in ["假人", "人形ICON", "人物ICON", "對話框", "說話框", "蓋章", "筆刷"]):
+            return
+        seen.add(key)
+        markers.append(m.strip())
+
+    for m in _collect_parenthesis_tags(script) + _collect_square_tags(script):
+        add_marker(m)
+
+    # fallback：支援使用者真的把「#做男假人ICON」單獨寫一行、不加括號的情況。
+    for raw in script.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if "(" in line or ")" in line or "[" in line or "]" in line:
+            # 這類行的標記已由括號 parser 處理，不再整行重複計算。
+            continue
+        if any(k in line for k in ["假人", "人形ICON", "人物ICON", "對話框", "說話框", "蓋章", "筆刷"]):
+            add_marker(line)
+
+    return markers
+
+
+def _parse_icon_quantity(marker: str) -> int:
+    """沒有寫數量時，預設就是 1；不再把假人ICON預設成 group。"""
+    t = marker or ""
+    m = re.search(r"([0-9０-９]+)\s*(?:個|位|名)?\s*(?:男|女)?\s*假人", t, flags=re.IGNORECASE)
+    if m:
+        raw = m.group(1).translate(str.maketrans("０１２３４５６７８９", "0123456789"))
+        try:
+            return max(1, min(10, int(raw)))
+        except Exception:
+            return 1
+    m2 = re.search(r"([一二兩三四五六七八九十])\s*(?:個|位|名)?\s*(?:男|女)?\s*假人", t)
+    if m2:
+        return ICON_NUMBER_MAP.get(m2.group(1), 1)
+    if re.search(r"(數個|多個|一群|群組|一排|多人)", t):
+        return 3
+    return 1
+
+
+def _parse_person_icon_modules(script: str) -> List[Dict[str, Any]]:
+    """假人ICON 數量/性別感知：女/男各自維持 1 個，除非使用者明確寫數量或數個。"""
+    modules: List[Dict[str, Any]] = []
+    for marker in _extract_parenthetical_and_line_markers(script):
+        if not re.search(r"假人\s*(?:ICON|icon)|假人大頭|人形\s*(?:ICON|icon)|人物\s*(?:ICON|icon)|人形圖示|人物圖示", marker, flags=re.IGNORECASE):
+            continue
+        gender = "neutral"
+        if re.search(r"女", marker):
+            gender = "female"
+        elif re.search(r"男", marker):
+            gender = "male"
+        qty = _parse_icon_quantity(marker)
+        type_name = {
+            "female": "FEMALE_PERSON_ICON",
+            "male": "MALE_PERSON_ICON",
+            "neutral": "PERSON_ICON",
+        }[gender]
+        gender_zh = {"female": "女性", "male": "男性", "neutral": "中性"}[gender]
+        plural_rule = "exactly ONE" if qty == 1 else f"exactly {qty}"
+        modules.append({
+            "type": type_name,
+            "count": qty,
+            "name": f"{gender_zh}假人ICON",
+            "source_marker": marker,
+            "instruction": (
+                f"Render {plural_rule} {gender_zh} simple person silhouette icon(s). "
+                "If count is 1, render a single standalone person icon, NOT a group and NOT multiple people. "
+                "Must be visible as icon artwork, not text. Do not omit. Keep outside protected image zones."
+            ),
+        })
+    return modules
+
+
+def detect_mandatory_graphic_modules(script: str) -> List[Dict[str, Any]]:
+    """把假人ICON、對話框等從『字典規則』升級為『必須生成的圖形模組』，且假人ICON具備數量/性別鎖。"""
+    modules: List[Dict[str, Any]] = []
+
+    modules.extend(_parse_person_icon_modules(script))
+
+    bubble_count = _count_pattern_from_script(script, SPEECH_BUBBLE_PATTERN)
+    if bubble_count:
+        modules.append({
+            "type": "SPEECH_BUBBLE",
+            "count": bubble_count,
+            "name": "對話框 / 說話框",
+            "instruction": "Render broadcast-style speech bubble(s) with a clear tail pointer. Must not be converted into ordinary rectangular information cards. Do not omit.",
+        })
+
+    stamp_count = _count_pattern_from_script(script, STAMP_PATTERN)
+    if stamp_count:
+        modules.append({
+            "type": "STAMP_OVERLAY",
+            "count": stamp_count,
+            "name": "蓋章效果",
+            "instruction": "Render distressed stamp overlay(s) only where explicitly requested. Keep outside protected image zones. Do not render the word 蓋章.",
+        })
+
+    brush_count = _count_pattern_from_script(script, BRUSH_PATTERN)
+    if brush_count:
+        modules.append({
+            "type": "BRUSH_STROKE",
+            "count": brush_count,
+            "name": "筆刷效果",
+            "instruction": "Render brush-stroke emphasis only where explicitly requested. Keep outside protected image zones. Do not render the word 筆刷.",
+        })
+
+    return modules
+
+
+def _block_has_person_icon(block_text: str) -> Tuple[bool, str]:
+    if re.search(r"女.*假人|做女假人|女假人", block_text, flags=re.IGNORECASE):
+        return True, "female"
+    if re.search(r"男.*假人|做男假人|男假人", block_text, flags=re.IGNORECASE):
+        return True, "male"
+    if re.search(r"假人\s*(?:ICON|icon)|假人大頭|人形\s*(?:ICON|icon)|人物\s*(?:ICON|icon)", block_text, flags=re.IGNORECASE):
+        return True, "neutral"
+    return False, ""
+
+
+def _clean_block_visible_preview(block_lines: List[str]) -> str:
+    cleaned: List[str] = []
+    for raw in block_lines:
+        line = raw.strip()
+        if not line or re.fullmatch(r"[-—=]{3,}", line):
+            continue
+        # 移除圖形/版型標記，只留下此組真正文字，用於提示模型綁定位置。
+        line = re.sub(r"\([^)]*(?:假人|ICON|icon|對話框|說話框|筆刷|蓋章|色塊|方框)[^)]*\)", "", line)
+        line = re.sub(r"[#＃][^\s]+", "", line)
+        line = _clean_visual_text(line) if '_clean_visual_text' in globals() else line.strip()
+        if line:
+            cleaned.append(line)
+    return " / ".join(cleaned[:6])
+
+
+def build_graphic_module_binding_lock(script: str) -> str:
+    """
+    把「某段文字 + 假人ICON + 對話框」綁成同一組，避免對話框飛到別處、假人被重複生。
+    以 ------ 分段為主；同一段內的 graphic module 必須貼著該段文字卡。
+    """
+    blocks = _split_script_blocks(script) if '_split_script_blocks' in globals() else []
+    groups: List[str] = []
+    icon_total = 0
+    bubble_total = 0
+    for block in blocks:
+        block_text = "\n".join(block)
+        has_icon, gender = _block_has_person_icon(block_text)
+        has_bubble = bool(SPEECH_BUBBLE_PATTERN.search(block_text))
+        if not has_icon and not has_bubble:
+            continue
+        icon_label = {"female": "ONE FEMALE person icon", "male": "ONE MALE person icon", "neutral": "ONE person icon", "": "no person icon"}[gender]
+        if has_icon:
+            icon_total += 1
+        if has_bubble:
+            bubble_total += 1
+        preview = _clean_block_visible_preview(block) or "this text block"
+        parts = []
+        if has_icon:
+            parts.append(icon_label)
+        if has_bubble:
+            parts.append("ONE speech bubble attached to this same block/icon")
+        groups.append(f"- Module group {len(groups)+1}: {', '.join(parts)} → bind to text block: {preview}")
+
+    if not groups:
+        return ""
+
+    return f"""
+[GRAPHIC MODULE BINDING LOCK]
+Graphic modules belong to their own dashed-script block. Do not detach them and do not move them to unrelated cards.
+{NL.join(groups)}
+
+Binding rules:
+- Do not duplicate person icons outside the listed module groups. Total person-icon groups from explicit markers: {icon_total}.
+- Do not create extra person icons from words like 車手、丈夫、老闆娘、被害人、嫌犯; semantic role words are text only unless an explicit 假人ICON marker exists in that block.
+- If a speech bubble appears in the same block as a male/female/person icon, the speech bubble must visually attach to that same icon/block with its tail pointing toward it.
+- Never place a requested speech bubble in a separate unrelated card.
+- Never infer additional icons from nearby text blocks.
+""".strip()
+
+
+def build_mandatory_graphic_module_lock(script: str) -> str:
+    modules = detect_mandatory_graphic_modules(script)
+    if not modules:
+        return """
+[MANDATORY GRAPHIC MODULE LOCK]
+No explicit mandatory graphic modules such as 假人ICON or 對話框 were requested.
+Do not invent extra decorative icons or speech bubbles.
+""".strip()
+
+    lines: List[str] = []
+    for idx, m in enumerate(modules, start=1):
+        source = f" Source marker: {m.get('source_marker', '')}." if m.get("source_marker") else ""
+        lines.append(f"- Graphic module {idx}: {m['type']} × {m['count']} — {m['instruction']}{source}")
+
+    return f"""
+[MANDATORY GRAPHIC MODULE LOCK]
+The following graphic modules were explicitly requested by the user. They are REQUIRED, not optional decoration.
+{NL.join(lines)}
+
+{build_graphic_module_binding_lock(script)}
+
+[ICON COUNT LOCK]
+- 女假人ICON / 做女假人ICON means exactly ONE female person icon unless a number is explicitly written.
+- 男假人ICON / 做男假人ICON means exactly ONE male person icon unless a number is explicitly written.
+- 假人ICON without 數個/多個/群/2個/3個 also means exactly ONE person icon.
+- Do NOT render multiple people by default.
+- Do NOT use a person-icon group template unless the user explicitly writes 數個、多個、一群、群組, or an exact number.
+
+Rules:
+- These modules must be rendered as graphic shapes/icons, not as visible words.
+- Never render helper words such as 假人ICON, 假人icon, 假人大頭, 人形ICON, 做女假人ICON, 做男假人ICON, 對話框, 說話框, speech bubble, 蓋章, 筆刷.
+- Do not omit them because the layout is crowded; reduce spacing or card padding instead.
+- Keep all graphic modules outside protected blank photo/ROLL/image zones.
+- Do not convert speech bubbles into plain cards when the user explicitly requested 對話框.
+""".strip()
+
+
+def _mandatory_graphic_module_summary(script: str) -> str:
+    modules = detect_mandatory_graphic_modules(script)
+    if not modules:
+        return "- No mandatory graphic modules detected."
+    return NL.join([f"- {m['type']} × {m['count']} ({m['name']}): REQUIRED graphic module, do not render marker text." for m in modules])
+
+
+def build_explicit_graphic_effect_lock(script: str) -> str:
+    """筆刷/蓋章 explicit only：沒標就禁止，不能因為內容語意自動判讀。"""
+    has_brush = has_explicit_brush_tag(script) or bool(BRUSH_PATTERN.search(script or ""))
+    has_stamp = has_explicit_stamp_tag(script) or bool(STAMP_PATTERN.search(script or ""))
+
+    brush_line = (
+        "Explicit brush tag detected: render brush effect ONLY for the text directly attached to that marker."
+        if has_brush
+        else "No explicit brush tag detected: BRUSH EFFECTS ARE FORBIDDEN. Do not create brush strokes, brush banners, paint smears, or brush-style conclusion labels."
+    )
+    stamp_line = (
+        "Explicit stamp tag detected: render stamp effect ONLY for the text directly attached to that marker."
+        if has_stamp
+        else "No explicit stamp tag detected: STAMP EFFECTS ARE FORBIDDEN. Do not create stamp overlays, seal marks, rubber-stamp labels, or judicial stamp effects."
+    )
+
+    return f"""
+[EXPLICIT GRAPHIC EFFECT LOCK]
+Brush and stamp effects are explicit-only. Never infer them from semantic context.
+- {brush_line}
+- {stamp_line}
+- Words like 法院、重判、起訴、搜索、查扣、判刑、賠償, numbers, quotes, <emphasis>, or emotional news tone are NOT triggers for brush/stamp effects.
+- If the user did not write 筆刷 / 筆刷效果 / #筆刷 / (+筆刷) / (+筆刷字), do not render any brush effect.
+- If the user did not write 蓋章 / 蓋章效果 / #蓋章 / (+蓋章), do not render any stamp effect.
+- This lock overrides style presets, AI自由變化, and automatic conclusion-module judgment.
+""".strip()
+
 def build_layout_diagnostics(parsed: ParsedInput, frame_type: str) -> str:
     """只給模型安全語意，不把 (左上圖 4:3)/(中上文字色塊) 這類內部註記原文丟進 prompt。"""
     image_list = NL.join([f"- Zone {i}: {_safe_zone_ratio_label(tag)}" for i, tag in enumerate(parsed.image_tags, start=1)]) or "- No explicit image tags detected."
-    module_list = NL.join([f"- Text/module block {i}: arrange as broadcast information card; do not render the module marker text." for i, _ in enumerate(parsed.module_tags, start=1)]) or "- No explicit module tags detected."
+    text_module_list = NL.join([f"- Text/module block {i}: arrange as broadcast information card; do not render the module marker text." for i, _ in enumerate(parsed.module_tags, start=1)]) or "- No explicit text/module tags detected."
+    graphic_module_list = _mandatory_graphic_module_summary(parsed.body)
+    module_list = text_module_list + NL + graphic_module_list
 
     return f"""
 [DETECTED LAYOUT INTENT - INTERNAL, DO NOT RENDER]
@@ -1595,8 +1907,9 @@ Rule: {aspect_cfg['directive']}
 - Every detected image placeholder must become a clean empty protected zone for real post-production photos.
 - No text/icon/UI/decoration/stamp/brush effect may touch or overlap protected image zones.
 - Internal helper annotations are forbidden in final pixels: 左上圖, 左下圖, 右ROLL框, 中上文字色塊, 中下文字色塊, 4:3, 4:5, 圖, ROLL框, ROLL, 視頻, 影片, video, 圖片區, 編輯圖片區, 4:5商比, 商比, 色塊, 打卡LOGO.
-- Stamp effects must be outside [圖] placeholders; stamps may sit on card borders, date labels, or background only.
-- BRUSH EFFECT IS EXPLICIT ONLY: Do not create brush effects unless the user explicitly writes (#筆刷), (筆刷), #筆刷, ---筆刷, or 筆刷效果.
+- STAMP EFFECT IS EXPLICIT ONLY: Do not create stamp effects unless the user explicitly writes (#蓋章), (+蓋章), #蓋章, ---蓋章, or 蓋章效果.
+- Stamp effects must be outside [圖] placeholders; stamps may sit on card borders, date labels, or background only ONLY when explicitly requested.
+- BRUSH EFFECT IS EXPLICIT ONLY: Do not create brush effects unless the user explicitly writes (#筆刷), (+筆刷), (+筆刷字), (筆刷), #筆刷, ---筆刷, or 筆刷效果.
 - Do not convert <emphasis>, quotes, numbers, conflict words, or normal body text into brush strokes.
 - Do not duplicate body text into a separate brush/stamp/sticker module unless explicitly tagged. Only promote a sentence once.
 - For all 框訊 layouts: two-line headline is forbidden; stacked headline is forbidden; secondary headline bars made from headline fragments are forbidden.
@@ -2303,6 +2616,10 @@ Headline treatment:
 User-provided text to arrange:
 {NL.join(text_group_lines)}
 
+{build_mandatory_graphic_module_lock(script)}
+
+{build_explicit_graphic_effect_lock(script)}
+
 Text arrangement rules:
 - Use only the user-provided Traditional Chinese text above.
 - Do not add any words, captions, labels, English, random numbers, or fake Chinese.
@@ -2517,7 +2834,7 @@ def build_image_prompt_translator(
             "Never add, rewrite, translate, summarize, or invent any text. "
             "Never duplicate names, numbers, keywords, or headline fragments. "
             "Do not omit approved text from the user-provided layout. "
-            "Do not render internal instruction labels, debug labels, card labels, image-box labels, source-marker labels, prompt syntax, style/category labels, or English labels. Never render layout helper words such as 左上圖, 左下圖, 右ROLL框, 中上文字色塊, 中下文字色塊, 4:3, 4:5, 圖, ROLL框, 色塊, 打卡LOGO, 打卡地點, 打卡, 後封保用照片, 後製確認照片, 真實視頻ROLL插投, ROLL/視頻, 視頻, video, 編輯圖片區, 圖片區, 4:5商比, 商比. Never render style/category words such as 社會案件, Justice Alert, Crime Scene Noir. "
+            "Do not render internal instruction labels, debug labels, card labels, image-box labels, source-marker labels, prompt syntax, style/category labels, or English labels. Never render layout helper words such as 左上圖, 左下圖, 右ROLL框, 中上文字色塊, 中下文字色塊, 4:3, 4:5, 圖, ROLL框, 色塊, 打卡LOGO, 打卡地點, 打卡, 假人ICON, 假人icon, 假人大頭, 人形ICON, 人物ICON, 對話框, 說話框, speech bubble, 後封保用照片, 後製確認照片, 真實視頻ROLL插投, ROLL/視頻, 視頻, video, 編輯圖片區, 圖片區, 4:5商比, 商比. Never render style/category words such as 社會案件, Justice Alert, Crime Scene Noir. "
             "If spacing is tight, reduce font size, line spacing, or rearrange modules instead of deleting text. "
             "No fake Chinese glyphs, no random numbers, no random English letters."
         )
