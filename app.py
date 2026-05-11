@@ -1292,6 +1292,50 @@ def _safe_zone_ratio_label(tag: str, default_aspect: str = "AI自動配置排版
         ratio = "4:5"
     return f"protected blank media area, internal aspect ratio instruction: {ratio}; ratio words are not visible text"
 
+# =========================================================
+# v23 GROUP LOCK
+# =========================================================
+
+GROUP_SEPARATOR_RE = re.compile(
+    r"^\s*[-—=]{6,}\s*$"
+)
+
+
+def split_editorial_groups(
+    script: str
+) -> List[str]:
+
+    if not script:
+        return []
+
+    groups = []
+    current = []
+
+    for raw in script.splitlines():
+
+        if GROUP_SEPARATOR_RE.match(
+            raw.strip()
+        ):
+
+            if current:
+                groups.append(
+                    NL.join(current).strip()
+                )
+                current = []
+
+            continue
+
+        current.append(raw)
+
+    if current:
+        groups.append(
+            NL.join(current).strip()
+        )
+
+    return [
+        x for x in groups
+        if x.strip()
+    ]
 
 def _extract_location_badges(script: str) -> List[str]:
     """
@@ -1564,41 +1608,82 @@ def _parse_person_icon_modules(script: str) -> List[Dict[str, Any]]:
     return modules
 
 
-def detect_mandatory_graphic_modules(script: str) -> List[Dict[str, Any]]:
-    """把假人ICON、對話框等從『字典規則』升級為『必須生成的圖形模組』，且假人ICON具備數量/性別鎖。"""
-    modules: List[Dict[str, Any]] = []
+def detect_mandatory_graphic_modules(
+    script: str
+) -> List[Dict[str, Any]]:
 
-    modules.extend(_parse_person_icon_modules(script))
+    modules = []
 
-    bubble_count = _count_pattern_from_script(script, SPEECH_BUBBLE_PATTERN)
-    if bubble_count:
-        modules.append({
-            "type": "SPEECH_BUBBLE",
-            "count": bubble_count,
-            "name": "對話框 / 說話框",
-            "instruction": "Render broadcast-style speech bubble(s) with a clear tail pointer. Must not be converted into ordinary rectangular information cards. Do not omit.",
-        })
+    groups = split_editorial_groups(
+        script
+    )
 
-    stamp_count = _count_pattern_from_script(script, STAMP_PATTERN)
-    if stamp_count:
-        modules.append({
-            "type": "STAMP_OVERLAY",
-            "count": stamp_count,
-            "name": "蓋章效果",
-            "instruction": "Render distressed stamp overlay(s) only where explicitly requested. Keep outside protected image zones. Do not render the word 蓋章.",
-        })
+    for gid, group_text in enumerate(
+        groups
+    ):
 
-    brush_count = _count_pattern_from_script(script, BRUSH_PATTERN)
-    if brush_count:
-        modules.append({
-            "type": "BRUSH_STROKE",
-            "count": brush_count,
-            "name": "筆刷效果",
-            "instruction": "Render brush-stroke emphasis only where explicitly requested. Keep outside protected image zones. Do not render the word 筆刷.",
-        })
+        if "女假人" in group_text:
+
+            count = 1
+
+            if re.search(
+                r"[3３三]\s*個",
+                group_text,
+            ):
+                count = 3
+
+            modules.append({
+                "group": gid,
+                "type": "FEMALE_ICON",
+                "count": count,
+            })
+
+        if "男假人" in group_text:
+
+            count = 1
+
+            if re.search(
+                r"[3３三]\s*個",
+                group_text,
+            ):
+                count = 3
+
+            modules.append({
+                "group": gid,
+                "type": "MALE_ICON",
+                "count": count,
+            })
+
+        if "對話框" in group_text:
+
+            modules.append({
+                "group": gid,
+                "type": "SPEECH_BUBBLE",
+                "count": 1,
+                "bind": True,
+            })
+
+        if has_explicit_brush_tag(
+            group_text
+        ):
+
+            modules.append({
+                "group": gid,
+                "type": "BRUSH",
+                "count": 1,
+            })
+
+        if has_explicit_stamp_tag(
+            group_text
+        ):
+
+            modules.append({
+                "group": gid,
+                "type": "STAMP",
+                "count": 1,
+            })
 
     return modules
-
 
 def _block_has_person_icon(block_text: str) -> Tuple[bool, str]:
     if re.search(r"女.*假人|做女假人|女假人", block_text, flags=re.IGNORECASE):
@@ -1670,96 +1755,195 @@ Binding rules:
 """.strip()
 
 
-def build_mandatory_graphic_module_lock(script: str) -> str:
-    modules = detect_mandatory_graphic_modules(script)
+def build_mandatory_graphic_module_lock(
+    script: str
+) -> str:
+
+    modules = detect_mandatory_graphic_modules(
+        script
+    )
+
+    groups = split_editorial_groups(
+        script
+    )
+
     if not modules:
+
         return """
-[MANDATORY GRAPHIC MODULE LOCK]
-No explicit mandatory graphic modules such as 假人ICON or 對話框 were requested.
-Do not invent extra decorative icons or speech bubbles.
+[MANDATORY GRAPHIC MODULES]
+No explicit graphic modules detected.
 """.strip()
 
-    lines: List[str] = []
-    for idx, m in enumerate(modules, start=1):
-        source = f" Source marker: {m.get('source_marker', '')}." if m.get("source_marker") else ""
-        lines.append(f"- Graphic module {idx}: {m['type']} × {m['count']} — {m['instruction']}{source}")
+    lines = []
+
+    for m in modules:
+
+        bind = ""
+
+        if m.get(
+            "bind"
+        ):
+            bind = " (bind)"
+
+        lines.append(
+            f"- GROUP {m['group'] + 1}: "
+            f"{m['type']} "
+            f"x{m['count']}"
+            f"{bind}"
+        )
 
     return f"""
-[MANDATORY GRAPHIC MODULE LOCK]
-The following graphic modules were explicitly requested by the user. They are REQUIRED, not optional decoration.
+[EDITORIAL GROUP LOCK v23]
+
+The user separated the script into {len(groups)} editorial groups.
+
+Elements inside the same group must stay together.
+
+Do not move modules across groups.
+
 {NL.join(lines)}
 
-{build_graphic_module_binding_lock(script)}
+RULES:
 
-[ICON COUNT LOCK]
-- 女假人ICON / 做女假人ICON means exactly ONE female person icon unless a number is explicitly written.
-- 男假人ICON / 做男假人ICON means exactly ONE male person icon unless a number is explicitly written.
-- 假人ICON without 數個/多個/群/2個/3個 also means exactly ONE person icon.
-- Do NOT render multiple people by default.
-- Do NOT use a person-icon group template unless the user explicitly writes 數個、多個、一群、群組, or an exact number.
+- Explicit icon beats semantic icon detection.
 
-Rules:
-- These modules must be rendered as graphic shapes/icons, not as visible words.
-- Never render helper words such as 假人ICON, 假人icon, 假人大頭, 人形ICON, 做女假人ICON, 做男假人ICON, 對話框, 說話框, speech bubble, 蓋章, 筆刷.
-- Do not omit them because the layout is crowded; reduce spacing or card padding instead.
-- Keep all graphic modules outside protected blank photo/ROLL/image zones.
-- Do not convert speech bubbles into plain cards when the user explicitly requested 對話框.
+- Never duplicate people because of:
+車手、丈夫、嫌犯、老闆娘。
+
+- One icon means exactly one person.
+
+- Speech bubble must stay attached to its icon.
+
+- Brush / stamp stay inside their group.
+
+- Do not scatter grouped modules.
 """.strip()
 
 
-def _mandatory_graphic_module_summary(script: str) -> str:
-    modules = detect_mandatory_graphic_modules(script)
-    if not modules:
-        return "- No mandatory graphic modules detected."
-    return NL.join([f"- {m['type']} × {m['count']} ({m['name']}): REQUIRED graphic module, do not render marker text." for m in modules])
 
+def build_explicit_graphic_effect_lock(
+    script: str
+) -> str:
 
-def build_explicit_graphic_effect_lock(script: str) -> str:
-    """筆刷/蓋章 explicit only：沒標就禁止，不能因為內容語意自動判讀。"""
-    has_brush = has_explicit_brush_tag(script) or bool(BRUSH_PATTERN.search(script or ""))
-    has_stamp = has_explicit_stamp_tag(script) or bool(STAMP_PATTERN.search(script or ""))
+    has_brush = has_explicit_brush_tag(
+        script
+    )
+
+    has_stamp = has_explicit_stamp_tag(
+        script
+    )
 
     brush_line = (
         "Explicit brush tag detected: render brush effect ONLY for the text directly attached to that marker."
         if has_brush
-        else "No explicit brush tag detected: BRUSH EFFECTS ARE FORBIDDEN. Do not create brush strokes, brush banners, paint smears, or brush-style conclusion labels."
+        else
+        "No explicit brush tag detected: BRUSH EFFECTS ARE FORBIDDEN."
     )
+
     stamp_line = (
         "Explicit stamp tag detected: render stamp effect ONLY for the text directly attached to that marker."
         if has_stamp
-        else "No explicit stamp tag detected: STAMP EFFECTS ARE FORBIDDEN. Do not create stamp overlays, seal marks, rubber-stamp labels, or judicial stamp effects."
+        else
+        "No explicit stamp tag detected: STAMP EFFECTS ARE FORBIDDEN."
     )
 
     return f"""
 [EXPLICIT GRAPHIC EFFECT LOCK]
-Brush and stamp effects are explicit-only. Never infer them from semantic context.
+
+Brush and stamp effects are explicit-only.
+
 - {brush_line}
+
 - {stamp_line}
-- Words like 法院、重判、起訴、搜索、查扣、判刑、賠償, numbers, quotes, <emphasis>, or emotional news tone are NOT triggers for brush/stamp effects.
-- If the user did not write 筆刷 / 筆刷效果 / #筆刷 / (+筆刷) / (+筆刷字), do not render any brush effect.
-- If the user did not write 蓋章 / 蓋章效果 / #蓋章 / (+蓋章), do not render any stamp effect.
-- This lock overrides style presets, AI自由變化, and automatic conclusion-module judgment.
+
+- If the user did not explicitly write:
+筆刷 / #筆刷 / (+筆刷)
+
+Do NOT render brush effects.
+
+- If the user did not explicitly write:
+蓋章 / #蓋章 / (+蓋章)
+
+Do NOT render stamp effects.
 """.strip()
 
+
+
 def build_layout_diagnostics(parsed: ParsedInput, frame_type: str) -> str:
-    """只給模型安全語意，不把 (左上圖 4:3)/(中上文字色塊) 這類內部註記原文丟進 prompt。"""
-    image_list = NL.join([f"- Zone {i}: {_safe_zone_ratio_label(tag)}" for i, tag in enumerate(parsed.image_tags, start=1)]) or "- No explicit image tags detected."
-    text_module_list = NL.join([f"- Text/module block {i}: arrange as broadcast information card; do not render the module marker text." for i, _ in enumerate(parsed.module_tags, start=1)]) or "- No explicit text/module tags detected."
-    graphic_module_list = _mandatory_graphic_module_summary(parsed.body)
-    module_list = text_module_list + NL + graphic_module_list
+    """v22 修補：輸出給 Gemini Image 的版面診斷區塊。
+
+    這個函式只產生 prompt 內部診斷文字，不會影響 Streamlit UI。
+    目的：讓 build_final_prompt_v18() 已有的呼叫不再 NameError，
+    同時強化圖區 / 模組 / 跑馬安全區 / 框訊單行標題規則。
+    """
+    image_tags = getattr(parsed, "image_tags", []) or []
+    module_tags = getattr(parsed, "module_tags", []) or []
+    title = clean_inline_text(getattr(parsed, "title", "") or "")
+
+    image_lines: List[str] = []
+    if image_tags:
+        for i, tag in enumerate(image_tags, 1):
+            image_lines.append(
+                f"- Asset zone {i}: {tag} => reserve one clean protected blank area; delete the helper text from final pixels."
+            )
+    else:
+        image_lines.append("- No explicit asset zone detected. Do not invent any photo / video / ROLL box.")
+
+    module_lines: List[str] = []
+    if module_tags:
+        for i, tag in enumerate(module_tags, 1):
+            module_lines.append(
+                f"- Module {i}: {tag} => render only the intended graphic structure; delete the literal instruction text."
+            )
+    else:
+        module_lines.append("- No explicit extra graphic module detected. Do not invent stickers, stamps, brush strokes, or extra cards.")
+
+    frame_notes: List[str] = []
+    if frame_type == "記者說新聞":
+        frame_notes.extend([
+            "- Reporter-news layout: headline stays at the absolute top; explanation modules fill left/right columns.",
+            "- Right-bottom ticker hardware safe zone X>1332, Y>990 is background-only.",
+            "- No text, icon, card, stamp, brush, shadow, or asset zone may enter the ticker safe zone.",
+        ])
+    elif str(frame_type).startswith("框訊") or frame_type == "框訊":
+        frame_notes.extend([
+            "- Framed-news layout: headline is single-line only, even if user supplied two headline phrases.",
+            "- Keep all information cards aligned to a clean broadcast grid.",
+            "- Do not create a second headline bar, subtitle bar, or duplicated headline fragment.",
+        ])
+    else:
+        frame_notes.extend([
+            "- Mega-headline layout: headline dominates the top band.",
+            "- Lower modules must avoid every protected image zone with at least 20px buffer.",
+        ])
+
+    warnings = getattr(parsed, "warnings", []) or []
+    warning_lines = [f"- {w}" for w in warnings] if warnings else ["- No parser warning."]
 
     return f"""
-[DETECTED LAYOUT INTENT - INTERNAL, DO NOT RENDER]
-Frame Type: {frame_type}
-Detected Protected Blank Zones:
-{image_list}
+[LAYOUT DIAGNOSTICS v22 PATCH]
+Parsed headline: {title if title else '未提供'}
+Frame type: {frame_type}
+Detected protected asset zones: {len(image_tags)}
+Detected graphic / layout modules: {len(module_tags)}
 
-Detected Text / Graphic Modules:
-{module_list}
+Asset-zone diagnostics:
+{NL.join(image_lines)}
 
-Render ban:
-- Do NOT render internal marker text such as 左上圖, 左下圖, 右ROLL框, 中上文字色塊, 中下文字色塊, 4:3, 4:5, 圖, ROLL框, 色塊.
-- These marker words are layout instructions only, never visible typography.
+Module diagnostics:
+{NL.join(module_lines)}
+
+Frame-specific diagnostics:
+{NL.join(frame_notes)}
+
+Parser warnings:
+{NL.join(warning_lines)}
+
+Hard diagnostic rules:
+- Preserve every detected asset zone as an empty post-production area.
+- Delete all helper words from final pixels: 圖, ROLL, 圖片區, 編輯圖片區, 4:3, 4:5, 色塊, 對話框, 數據框, 筆刷, 蓋章, 打卡LOGO, 打卡地點.
+- Never add unrequested people, icons, logo, ticker, LIVE, dates, numbers, subtitles, labels, or decorative UI.
+- If space is tight, shrink typography or rearrange modules; never overlap protected zones.
 """.strip()
 
 def build_final_prompt_v18(
