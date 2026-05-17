@@ -1170,6 +1170,46 @@ Layout mode: {layout_mode}
 
 {build_visual_token_compiler_block(script, frame_type, headline_mode)}
 
+[PROTECTED PHOTO ZONE｜ABSOLUTE]
+
+Detected image / roll zones are HARD EMPTY SAFE ZONES.
+
+These zones are reserved for manual post-production.
+
+Inside these zones, absolutely forbidden:
+
+- text
+- icons
+- badges
+- speech bubbles
+- brush effects
+- stamp effects
+- labels
+- callouts
+- arrows
+- decorations
+- captions
+- highlight strips
+- glow effects
+- shadow overlays
+- UI cards
+- borders crossing into the zone
+
+No visual object may overlap.
+
+No partial overlap.
+
+No edge touching.
+
+Keep at least 20px safety margin.
+
+Protected zones must stay 100% clean blank placeholders.
+
+If a bubble, brush, label, or badge is near a protected zone:
+
+AUTO MOVE it outside the protected zone.
+
+Never prioritize aesthetics over protected zone integrity.
 {build_layout_diagnostics(parsed, frame_type)}
 
 [v19.6 DIRECTOR DECISION]
