@@ -845,41 +845,112 @@ def _collect_square_tags(script: str) -> List[str]:
 
 
 def parse_user_script(script: str) -> ParsedInput:
-    """抓出標題、圖區、模組與警告。"""
+    """v22.16 Headline Group Lock"""
+
     warnings: List[str] = []
 
     title = ""
+
     for key in ["大標:", "大標=", "標題:", "標題=", "標:", "標="]:
+
         if key in script:
-            title = script.split(key, 1)[1].strip().splitlines()[0]
+
+            after = script.split(key, 1)[1]
+
+            headline_lines: List[str] = []
+
+            for raw in after.splitlines():
+
+                line = raw.strip()
+
+                if not line:
+                    continue
+
+                # 左= 右= 上= 下=
+                if re.match(
+                    r"^(左|右|上|下|中|LEFT|RIGHT|TOP|BOTTOM)\s*[:=：]",
+                    line,
+                    flags=re.I,
+                ):
+                    break
+
+                # 遇素材圖區停止 headline lock
+                if is_asset_protection_tag(line):
+                    break
+
+                headline_lines.append(line)
+
+            title = "\n".join(headline_lines)
+
             break
+
     if not title:
-        title = next((line.strip() for line in script.splitlines() if line.strip()), "")[:80]
+
+        title = next(
+            (line.strip() for line in script.splitlines() if line.strip()),
+            "",
+        )[:80]
 
     square_tags = _collect_square_tags(script)
     paren_tags = _collect_parenthesis_tags(script)
 
     image_tags: List[str] = []
+
     for tag in square_tags + paren_tags:
+
         if is_asset_protection_tag(tag):
             image_tags.append(tag)
-    image_tags = list(dict.fromkeys([tag.strip() for tag in image_tags if tag.strip()]))
+
+    image_tags = list(
+        dict.fromkeys(
+            [tag.strip() for tag in image_tags if tag.strip()]
+        )
+    )
 
     module_tags: List[str] = []
-    module_words = ["色塊", "方框", "對話框", "數據框", "小標", "蓋章", "假人", "icon", "筆刷", "關係", "群組", "頭+字"]
+
+    module_words = [
+        "色塊",
+        "方框",
+        "對話框",
+        "數據框",
+        "小標",
+        "蓋章",
+        "假人",
+        "icon",
+        "筆刷",
+        "關係",
+        "群組",
+        "頭+字",
+    ]
+
     for tag in square_tags + paren_tags:
+
         if _contains_any(tag, module_words):
             module_tags.append(tag)
+
     if "#筆刷" in script:
         module_tags.append("#筆刷")
-    module_tags = list(dict.fromkeys([tag.strip() for tag in module_tags if tag.strip()]))
+
+    module_tags = list(
+        dict.fromkeys(
+            [tag.strip() for tag in module_tags if tag.strip()]
+        )
+    )
 
     if "[圖" not in script and not image_tags:
-        warnings.append("這份稿件沒有明確 [圖] 標記；若需要後製塞真實圖片，建議補上 [圖-左主] 或 [圖-右主]。")
 
-    return ParsedInput(title=title, body=script.strip(), image_tags=image_tags, module_tags=module_tags, warnings=warnings)
+        warnings.append(
+            "這份稿件沒有明確 [圖] 標記；若需要後製塞真實圖片，建議補上 [圖-左主] 或 [圖-右主]。"
+        )
 
-
+    return ParsedInput(
+        title=title,
+        body=script.strip(),
+        image_tags=image_tags,
+        module_tags=module_tags,
+        warnings=warnings,
+    )
 # =========================================================
 # 6. v17 核心規則文字
 # =========================================================
@@ -1058,13 +1129,38 @@ COLOR STRATEGY: {color_logic}
 
 {safe_zone_text}
 
-[HEADLINE]
+[HEADLINE GROUP LOCK v22.16]
 Mode: {headline_mode}
-TOP HEADLINE LOCK: The headline must always sit at the very top of the 1920x1080 canvas.
-If Mode is 一行大標題: render the headline as one single line in the top headline band.
-If Mode is 兩行大標題: force a two-line stacked headline in the top headline band.
-Never place the headline in the middle or lower content area.
-Headline must dominate the design. Use huge broadcast-style typography, strong outline, shadow, and layered emphasis.
+
+HEADLINE TEXT:
+{parsed.title}
+
+TOP HEADLINE LOCK:
+The headline must always sit at the very top.
+
+If headline contains multiple lines:
+
+ALL lines must stay inside the TOP HEADLINE BAND.
+
+Never move line 2 or line 3 into body area.
+
+Never merge with cards.
+
+Never compress to one line.
+
+Never delete line 2.
+
+Preserve line breaks exactly.
+
+Headline must dominate the design.
+
+Use huge broadcast-style typography.
+
+Strong outline.
+
+Shadow.
+
+Layered emphasis.
 
 [LAYOUT]
 Layout mode: {layout_mode}
