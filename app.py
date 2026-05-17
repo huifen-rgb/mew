@@ -43,7 +43,6 @@ AI_MODELS: Dict[str, str] = {
 }
 
 UI_FRAME_OPTIONS = ["標大框", "框訊", "記者說新聞"]
-ASSET_ASPECT_OPTIONS = ["AI自動配置排版", "4:3 橫式素材框", "4:5 直式素材框"]
 
 
 def normalize_frame_for_ui(frame_type: str) -> str:
@@ -68,44 +67,6 @@ def resolve_frame_for_engine(ui_frame_type: str, script: str = "") -> str:
             return "框訊・多圖對比"
         return detected
     return ui_frame_type
-
-def resolve_asset_aspect(aspect_label: str) -> Dict[str, str]:
-    """ROLL / 圖區版面尺寸選項。"""
-    if "AI" in str(aspect_label) or "自動" in str(aspect_label):
-        return {
-            "label": "AI自動配置排版",
-            "ratio": "auto",
-            "css_class": "ratio-auto",
-            "directive": "AI may choose proportions only for the existing user-requested protected blank zones. Choose ratio silently by material type: horizontal for standard footage, vertical for portrait/mobile material, wider for document/evidence boards, and mixed ratios when multiple asset types appear. Do not create any new media/photo/video zones, do not write ratio text on screen, and never distort the 1920x1080 canvas.",
-        }
-    if "4:5" in str(aspect_label):
-        return {
-            "label": "4:5 直式素材框",
-            "ratio": "4:5",
-            "css_class": "ratio-45",
-            "directive": "Use 4:5 vertical portrait ratio for all ROLL/photo/video asset zones. Keep each protected zone tall and vertical, suitable for portrait photos, screenshots, or mobile-style visuals.",
-        }
-    return {
-        "label": "4:3 橫式素材框",
-        "ratio": "4:3",
-        "css_class": "ratio-43",
-        "directive": "Use 4:3 horizontal landscape ratio for all ROLL/photo/video asset zones. Keep each protected zone wide and stable, suitable for standard video stills and news footage.",
-    }
-
-
-def resolve_asset_aspect_for_tag(tag: str, global_aspect: str) -> Dict[str, str]:
-    """
-    v22.3：支援單一圖區覆寫比例。
-    使用方式：在圖區標籤內寫 4:3 或 4:5，例如：
-    [圖-左ROLL 4:3]、[圖-右人物 4:5]、(#定監視器畫面 4:3)、(LINE截圖 4:5)
-    未標註的圖區才吃全域選項。
-    """
-    text = str(tag or "")
-    if re.search(r"4\s*[:：]\s*5", text):
-        return resolve_asset_aspect("4:5 直式素材框")
-    if re.search(r"4\s*[:：]\s*3", text):
-        return resolve_asset_aspect("4:3 橫式素材框")
-    return resolve_asset_aspect(global_aspect)
 
 STRICT_NO_EXTRA_FACTS = """
 【防亂生文字規則｜絕對遵守】
@@ -240,42 +201,15 @@ FRAME_TEMPLATES: Dict[str, Dict[str, str]] = {
 AI_FREE_STYLE_NAME = "AI自由創作風格（不受固定風格庫限制）"
 
 def get_style_config(style_name: str) -> Dict[str, str]:
-    """取得題材風格設定。
-    v22.7 起：style_name 代表「新聞題材風格 / WHAT」，不再拿 AI自由模式覆蓋。
-    AI自由變化改由 visual_variation_mode 控制「畫法 / HOW」。
-    """
+    """允許 AI 自由創作風格；手動模式才使用固定 STYLE_CONFIG。"""
+    if style_name == AI_FREE_STYLE_NAME or str(style_name).startswith("AI自由"):
+        return {
+            "theme": "AI-directed content-specific broadcast news design",
+            "ui": "AI may freely choose broadcast background texture, color palette, typography weight, card style, lighting, and composition according to the story tone",
+            "palette": "AI-selected; not limited to predefined style packs",
+            "highlight": "AI-selected high-contrast accent based on approved text hierarchy",
+        }
     return STYLE_CONFIG.get(style_name, STYLE_CONFIG["民生消費 (Fluid Analytics)"])
-
-
-def build_visual_variation_policy(style_name: str, visual_variation_mode: str) -> str:
-    """把「自動判定風格」與「AI自由變化」拆開：
-    - style_name：社會案件 / 財經 / 民生等題材框架。
-    - visual_variation_mode：在同一題材框架內，固定套版或自由變化底圖、構圖、材質。
-    """
-    style = get_style_config(style_name)
-    if str(visual_variation_mode).startswith("AI自由"):
-        return f"""
-[VISUAL VARIATION MODE｜AI自由變化但不脫離題材]
-CONTENT STYLE LOCK: {style_name}
-- Keep the semantic base of this detected/selected news style.
-- Theme base: {style['theme']}
-- Texture base: {style['ui']}
-- Palette base: {style['palette']} / accent {style['highlight']}
-- AI may freely vary the background composition, lighting, texture, card shapes, depth, gradients, visual rhythm, and headline treatment WITHIN this content style.
-- Do not make every output look like the same template.
-- Do not jump to unrelated genres or unrelated moods.
-- Freedom applies only to visual treatment; never add facts, words, labels, people, logos, photos, or extra asset boxes.
-""".strip()
-    return f"""
-[VISUAL VARIATION MODE｜固定風格庫]
-CONTENT STYLE LOCK: {style_name}
-- Use the selected Visual Director style library consistently.
-- Theme: {style['theme']}
-- UI texture: {style['ui']}
-- Palette: {style['palette']}
-- Highlight: {style['highlight']}
-- Keep the visual result stable and close to the preset style.
-""".strip()
 
 
 @dataclass
@@ -299,19 +233,6 @@ ASSET_PROTECTION_KEYWORDS = [
     "監視器", "畫面", "外觀照", "照片", "空拍", "地圖", "示意", "素材", "影像",
 ]
 
-ROLL_ALIAS_RE = re.compile(
-    r"(?:開框\s*)?(?:左|右|中|中央|左邊|右邊|中間)?\s*(?:ROLL|roll|Roll)\s*(?:框)?",
-    re.IGNORECASE,
-)
-
-def _has_roll_alias(text: str) -> bool:
-    """支援 (開框roll)、++ROLL++、左ROLL=、右ROLL=、右邊 roll框 4:5 等寫法。"""
-    raw = str(text or "")
-    compact = re.sub(r"[+＋#＃\-—_＝=＊*\s()（）\[\]【】]+", "", raw)
-    if re.search(r"(?:開框)?(?:左|右|中|中央)?(?:ROLL|roll|Roll)(?:框)?", compact, flags=re.IGNORECASE):
-        return True
-    return bool(ROLL_ALIAS_RE.search(raw))
-
 
 def is_asset_protection_tag(tag: str) -> bool:
     """
@@ -322,8 +243,6 @@ def is_asset_protection_tag(tag: str) -> bool:
     if not tag:
         return False
     t = tag.strip()
-    if _has_roll_alias(t):
-        return True
     if t.startswith("[圖"):
         return True
     if "#定" in t or "＃定" in t or "#開框" in t or "＃開框" in t:
@@ -336,70 +255,8 @@ def is_asset_protection_tag(tag: str) -> bool:
     return False
 
 
-
-def _canonical_asset_zone_key(tag: str) -> str:
-    """
-    v22.9：素材區去重 key。
-    同一個原始註記可能同時被括號 parser、ROLL alias parser、spatial parser 抓到，
-    例如 (左ROLL 4:5=) 會變成 (左ROLL 4:5=) 與 ((左ROLL 4:5=))。
-    這裡把外層符號、比例、等號、加號等都正規化，確保同一個 ROLL/圖區只算一次。
-    """
-    raw = str(tag or "").strip()
-    raw = raw.replace("（", "(").replace("）", ")").replace("＋", "+").replace("＝", "=").replace("：", ":")
-    # 去掉重複外層括號/方括號
-    previous = None
-    while raw and raw != previous:
-        previous = raw
-        raw = raw.strip()
-        if (raw.startswith("(") and raw.endswith(")")) or (raw.startswith("[") and raw.endswith("]")):
-            raw = raw[1:-1].strip()
-    raw = _normalize_spatial_alias_text(raw) if '_normalize_spatial_alias_text' in globals() else raw
-    raw = re.sub(r"\s+", "", raw)
-    raw = re.sub(r"[+＋#＃\-—_＝=＊*]+", "", raw)
-    raw = re.sub(r"4\s*[:：]\s*[35]", "", raw, flags=re.IGNORECASE)
-    raw = re.sub(r"(?i)roll", "ROLL", raw)
-    raw = raw.replace("邊", "")
-    return raw.lower()
-
-
-def _dedupe_asset_zone_list(zones: List[str]) -> List[str]:
-    """保留順序去重；同一個原始素材註記只准產生一個 protected blank zone。"""
-    deduped: List[str] = []
-    seen = set()
-    for z in zones:
-        if not z:
-            continue
-        key = _canonical_asset_zone_key(z)
-        if not key or key in seen:
-            continue
-        seen.add(key)
-        deduped.append(str(z).strip())
-    return deduped
-
-
-def _is_control_or_effect_visible_text(line: str) -> bool:
-    """不可進 Approved visible text 的控制字 / 特效字 / 欄位字。"""
-    raw = str(line or "").strip()
-    if not raw:
-        return True
-    compact = re.sub(r"\s+", "", raw)
-    if re.fullmatch(r"(主標|大標|標題|標|小標)\s*[=:：＝]?", raw):
-        return True
-    if re.fullmatch(r"(左|右|中|中央|上|下|左上|左下|右上|右下|中上|中下)\s*[=:：＝]?", raw):
-        return True
-    if re.search(r"(打卡符號|爆炸效果|閃光效果|特效|效果|筆刷效果|蓋章效果)", raw):
-        return True
-    if _is_layout_helper_line(raw) or _has_roll_alias(raw):
-        return True
-    if re.fullmatch(r"[()（）!！\s]+", raw):
-        return True
-    # 比例/placeholder/內部提示字不可進白名單
-    if re.search(r"(4\s*[:：]\s*[35]|ROLL|roll|圖區|圖片區|編輯圖片區|placeholder|image box)", raw, flags=re.IGNORECASE):
-        return True
-    return False
-
 def _count_image_intents(script: str) -> int:
-    markers = ["[圖", "(#定", "(＃定", "(定", "(圖片", "圖片", "截圖", "ROLL", "roll", "Roll", "左ROLL", "右ROLL", "開框ROLL", "開框roll", "++ROLL", "定圖", "外觀照", "開框"]
+    markers = ["[圖", "(#定", "(＃定", "(定", "(圖片", "圖片", "截圖", "ROLL", "roll", "定圖", "外觀照", "開框"]
     return sum(script.count(marker) for marker in markers)
 
 
@@ -633,7 +490,7 @@ def auto_detect_style(script: str) -> str:
         return "選情政論 (Democracy Grey)"
     if _contains_any(script, ["AI", "OpenAI", "Meta", "科技", "晶片", "台積電", "聯發科"]):
         return "科技政策 (Cyber Policy)"
-    if _contains_any(script, ["招標", "霸凌", "偷拍", "申訴", "警", "警方", "北檢", "廉政署", "偵辦", "圖利", "肇事", "逃逸", "毒駕", "自撞", "翻覆", "電箱", "嫌犯", "投案"]):
+    if _contains_any(script, ["招標", "霸凌", "偷拍", "申訴", "警", "警方", "北檢", "廉政署", "偵辦", "圖利"]):
         return "社會案件 (Justice Alert)"
     return "民生消費 (Fluid Analytics)"
 
@@ -987,171 +844,30 @@ def _collect_square_tags(script: str) -> List[str]:
     return tags
 
 
-
-
-def _collect_column_inline_tags(script: str) -> List[str]:
-    """
-    支援欄位級寫法：
-    左：(圖 4:3) / 中：文字色塊 / 右：ROLL框 4:5
-    若沒有括號，也會包成內部 tag 讓後續圖區數量與模組數量正確。
-    """
-    tags: List[str] = []
-    for raw in (script or "").splitlines():
-        line = raw.strip()
-        m = re.match(r"^(左|中|中央|右)\s*[：:]\s*(.+)$", line)
-        if not m:
-            continue
-        col, content = m.group(1), m.group(2).strip()
-        # 已有括號/方括號時，原本 collect 會抓；這裡只補無括號寫法。
-        if _collect_parenthesis_tags(content) or _collect_square_tags(content):
-            continue
-        if re.search(r"(圖|ROLL|roll|影片|照片|截圖|畫面|定圖)", content):
-            tags.append(f"({col}{content})")
-        elif re.search(r"(文字|色塊|方框|對話框|數據框|卡|模組)", content):
-            tags.append(f"({col}{content})")
-    return tags
-
-def extract_headline_lines(script: str) -> List[str]:
-    """
-    v22.7：大標最多只吃兩行。
-    大標:
-    第一行
-    第二行
-    => 若選一行大標，合併成同一條一行大標，中間保留半形空格。
-    第三行開始不再吃，避免把內文吞進 headline。
-    """
-    lines = (script or "").splitlines()
-    headline_lines: List[str] = []
-    collecting = False
-
-    HEADLINE_KEYS = [
-    "大標:", "大標：", "大標=", "大標＝",
-    "主標:", "主標：", "主標=", "主標＝",
-    "標題:", "標題：", "標題=", "標題＝",
-    "標:", "標：", "標=", "標＝",
-]
-    headline_keys = HEADLINE_KEYS
-    stop_prefixes = ("小標:", "小標：", "小標=", "內容:", "內容：", "內容=", "內文:", "內文：", "內文=")
-
-    for raw in lines:
-        line = raw.strip()
-
-        if not collecting:
-            for key in headline_keys:
-                if line.startswith(key):
-                    collecting = True
-                    after = line.split(key, 1)[1].strip()
-                    if after:
-                        headline_lines.append(after)
-                    break
-            if len(headline_lines) >= 2:
-                break
-            continue
-
-        # 大標區遇到空行、素材/模組標籤、小標/內容欄位，就結束。
-        if not line:
-            break
-        if line.startswith(stop_prefixes):
-            break
-        if line.startswith("(") or line.startswith("["):
-            break
-        if re.fullmatch(r"[-—=]{3,}", line):
-            break
-
-        headline_lines.append(line)
-        if len(headline_lines) >= 2:
-            break
-
-    return [_clean_visual_text(x) for x in headline_lines[:2] if _clean_visual_text(x)]
-
-
-def extract_full_headline(script: str) -> str:
-    """大標預設合併成單一 headline 字串；框訊/一行大標會用這個字串強制一行。"""
-    lines = extract_headline_lines(script)
-    if lines:
-        return " ".join(lines[:2]).strip()[:120]
-    fallback = next((line.strip() for line in (script or "").splitlines() if line.strip()), "")
-    return _clean_visual_text(fallback)[:120]
-
-
-def build_headline_display_text(script: str, headline_mode: str) -> str:
-    """
-    v22.8：依標題行數決定 headline 給影像模型的權威文字。
-    - 一行大標題：大標後最多兩行合併成一條，中間保留半形空格。
-    - 兩行大標題：只有使用者真的分成兩行時，才做兩行；若使用者本來寫一行，就保留一行。
-    """
-    lines = extract_headline_lines(script)
-    if not lines:
-        return extract_full_headline(script)
-    if headline_mode == "兩行大標題":
-        return "\n".join(lines[:2]).strip()
-    return " ".join(lines[:2]).strip()
-
-
-def build_headline_mode_brief(script: str, headline_mode: str, frame_type: str = "") -> str:
-    """生成給 Gemini Image 的標題硬規則，避免兩行大標只抓到第一行。"""
-    lines = extract_headline_lines(script)
-    line1 = lines[0] if len(lines) >= 1 else extract_full_headline(script)
-    line2 = lines[1] if len(lines) >= 2 else ""
-
-    if headline_mode == "兩行大標題" and not (frame_type.startswith("框訊") or frame_type == "框訊"):
-        if line2:
-            return f"""[HEADLINE TEXT LOCK]
-Headline mode is TWO-LINE MEGA HEADLINE.
-Render exactly two stacked headline lines at the top:
-LINE 1: {line1}
-LINE 2: {line2}
-Do not drop LINE 2. Do not merge LINE 2 into body text. Do not turn LINE 2 into a subtitle card.
-Both headline lines must be huge broadcast-style headline typography.
-""".strip()
-        return f"""[HEADLINE TEXT LOCK]
-Headline mode is TWO-LINE MEGA HEADLINE, but only one headline line was provided.
-Render the provided headline at the top as the dominant mega headline:
-LINE 1: {line1}
-Do not invent a second headline line.
-""".strip()
-
-    merged = " ".join(lines[:2]) if lines else line1
-    return f"""[HEADLINE TEXT LOCK]
-Headline mode is SINGLE-LINE HEADLINE.
-Render the complete headline as one single line at the top:
-{merged}
-If the user supplied two headline lines, merge them into this one headline line with one half-width space between phrases.
-Do not drop the second phrase. Do not wrap. Do not create a second headline bar.
-""".strip()
-
-
 def parse_user_script(script: str) -> ParsedInput:
     """抓出標題、圖區、模組與警告。"""
     warnings: List[str] = []
 
-    title = extract_full_headline(script)
+    title = ""
+    for key in ["大標:", "大標=", "標題:", "標題=", "標:", "標="]:
+        if key in script:
+            title = script.split(key, 1)[1].strip().splitlines()[0]
+            break
+    if not title:
+        title = next((line.strip() for line in script.splitlines() if line.strip()), "")[:80]
 
     square_tags = _collect_square_tags(script)
     paren_tags = _collect_parenthesis_tags(script)
-    inline_column_tags = _collect_column_inline_tags(script)
 
     image_tags: List[str] = []
-    for tag in square_tags + paren_tags + inline_column_tags:
+    for tag in square_tags + paren_tags:
         if is_asset_protection_tag(tag):
             image_tags.append(tag)
-
-    # v22.8 ROLL alias reserve fix:
-    # Bare newsroom shorthand such as ++ROLL++, +++右ROLL+++, 左ROLL=, 右ROLL：, (開框roll)
-    # must create protected blank asset zones, but the literal marker text must never render.
-    # _extract_asset_zones() also scans line-level aliases beyond brackets/parentheses.
-    try:
-        for tag in _extract_asset_zones(script):
-            if is_asset_protection_tag(tag):
-                image_tags.append(tag)
-    except Exception:
-        pass
-
-    image_tags = _dedupe_asset_zone_list(list(dict.fromkeys([tag.strip() for tag in image_tags if tag.strip()])))
+    image_tags = list(dict.fromkeys([tag.strip() for tag in image_tags if tag.strip()]))
 
     module_tags: List[str] = []
     module_words = ["色塊", "方框", "對話框", "數據框", "小標", "蓋章", "假人", "icon", "筆刷", "關係", "群組", "頭+字"]
-    for tag in square_tags + paren_tags + inline_column_tags:
+    for tag in square_tags + paren_tags:
         if _contains_any(tag, module_words):
             module_tags.append(tag)
     if "#筆刷" in script:
@@ -1204,10 +920,9 @@ def build_frame_rules(frame_type: str) -> str:
 - Language: Traditional Chinese only.
 - Output must look like polished professional TV news CG.
 - Text hierarchy must be strong and readable on broadcast.
-- TOP HEADLINE LOCK: headline must always be placed at the very top edge area of the canvas.
+- TOP HEADLINE LOCK: headline must always be placed at the very top edge area of the canvas, whether it is one line or two lines.
 - One-line headline: keep it in the top headline band, centered or left-weighted, never moved to middle.
-- Two-line headline is allowed ONLY for 標大框 or when explicitly selected in non-框訊 layouts.
-- For every 框訊 layout, headline must be a single line; never stack or auto-wrap.
+- Two-line headline: stack both lines in the top headline band, never placed in the center body area.
 - Do not leave accidental blank spaces, except protected image zones and ticker safe zone.
 """
 
@@ -1231,11 +946,7 @@ def build_frame_rules(frame_type: str) -> str:
 """,
         "框訊・多圖對比": """
 [FRAME: 框訊・多圖對比]
-- Top: SINGLE LINE headline only.
-- Never split headline into two lines.
-- Never stack headline vertically.
-- Never create a second headline/subtitle bar from headline fragments.
-- If the Chinese headline is too long, reduce font size, tracking, or side margins instead of wrapping.
+- Top: mega headline.
 - Upper row: multiple real-material image zones, such as construction, documents, people.
 - Left/lower: main image hole if present.
 - Right/lower: quote, price difference, investigation or explanation blocks.
@@ -1244,11 +955,7 @@ def build_frame_rules(frame_type: str) -> str:
 """,
         "框訊・對打時間軸": """
 [FRAME: 框訊・對打時間軸]
-- Top: SINGLE LINE headline only, with opposing keywords emphasized within the same line.
-- Never split headline into two lines.
-- Never stack headline vertically.
-- Never create a second headline/subtitle bar from headline fragments.
-- If the Chinese headline is too long, reduce font size, tracking, or side margins instead of wrapping.
+- Top: headline with opposing keywords.
 - Upper/lateral: two-person debate or attack/response zones.
 - Main ROLL/video zone usually on the right and must stay empty.
 - Bottom: timeline/event images arranged in equal-width blocks.
@@ -1256,11 +963,6 @@ def build_frame_rules(frame_type: str) -> str:
 """,
         "框訊・數據分析": """
 [FRAME: 框訊・數據分析]
-- Top: SINGLE LINE headline only.
-- Never split headline into two lines.
-- Never stack headline vertically.
-- Never create a second headline/subtitle bar from headline fragments.
-- If the Chinese headline is too long, reduce font size, tracking, or side margins instead of wrapping.
 - Main body is data hierarchy, not image hierarchy.
 - Use clear data cards, stacked rows, and strong numerical emphasis.
 - Person image, if any, is secondary and protected.
@@ -1268,11 +970,7 @@ def build_frame_rules(frame_type: str) -> str:
 """,
         "框訊・流程關係": """
 [FRAME: 框訊・流程關係]
-- Top: SINGLE LINE strong conflict headline only.
-- Never split headline into two lines.
-- Never stack headline vertically.
-- Never create a second headline/subtitle bar from headline fragments.
-- If the Chinese headline is too long, reduce font size, tracking, or side margins instead of wrapping.
+- Top: strong conflict headline.
 - Left side: relationship diagram with role group and branch nodes.
 - Right side: main image/ROLL protected zone.
 - Use connector lines from role icons to relationship nodes.
@@ -1282,669 +980,20 @@ def build_frame_rules(frame_type: str) -> str:
     return textwrap.dedent(common + NL + rules.get(frame_type, rules["標大框"])).strip()
 
 
-def _safe_zone_ratio_label(tag: str, default_aspect: str = "AI自動配置排版") -> str:
-    """把使用者圖區註記轉成不會被 Gemini 畫出來的安全描述。"""
-    zcfg = resolve_asset_aspect_for_tag(tag, default_aspect) if 'resolve_asset_aspect_for_tag' in globals() else {"ratio": "auto"}
-    ratio = zcfg.get("ratio", "auto")
-    if re.search(r"4\s*[:：]\s*3", tag or ""):
-        ratio = "4:3"
-    elif re.search(r"4\s*[:：]\s*5", tag or ""):
-        ratio = "4:5"
-    return f"protected blank media area, internal aspect ratio instruction: {ratio}; ratio words are not visible text"
-
-# =========================================================
-# v23 GROUP LOCK
-# =========================================================
-
-GROUP_SEPARATOR_RE = re.compile(
-    r"^\s*[-—=]{6,}\s*$"
-)
-
-
-def split_editorial_groups(
-    script: str
-) -> List[str]:
-
-    if not script:
-        return []
-
-    groups = []
-    current = []
-
-    for raw in script.splitlines():
-
-        if GROUP_SEPARATOR_RE.match(
-            raw.strip()
-        ):
-
-            if current:
-                groups.append(
-                    NL.join(current).strip()
-                )
-                current = []
-
-            continue
-
-        current.append(raw)
-
-    if current:
-        groups.append(
-            NL.join(current).strip()
-        )
-
-    return [
-        x for x in groups
-        if x.strip()
-    ]
-
-def _extract_location_badges(script: str) -> List[str]:
-    """
-    抽出可上畫面的打卡地點文字。
-
-    重要：
-    - 「打卡LOGO / 打卡地點」是導演註記，不可上畫面。
-    - 後面的地名才是合法可渲染文字。
-    - 支援：
-      打卡地點:新北市永和區
-      (打卡LOGO)新北市永和區
-      打卡LOGO:新北市永和區
-      (右ROLL框 4:5+ 換行 打卡地點:新北市永和區)
-    """
-    if not script:
-        return []
-
-    badges: List[str] = []
-
-    patterns = [
-        # 高雄三民區---打卡符號 / 台南---打卡符號
-        r"([^\n()（）]+?)\s*[-—]{2,}\s*打卡符號",
-        # 高雄三民區+++打卡符號 / 高雄三民區 + 打卡符號
-        r"([^\n()（）]+?)\s*[+＋]{1,}\s*打卡符號",
-        # 打卡地點:新北市永和區 / 打卡地點：新北市永和區
-        r"打卡地點\s*[：:]\s*([^\)\n]+)",
-        # 地點:新北市永和區
-        r"(?<!打卡)地點\s*[：:]\s*([^\)\n]+)",
-        # 打卡LOGO:新北市永和區 / 打卡LOGO：新北市永和區
-        r"打卡\s*LOGO\s*[：:]\s*([^\)\n]+)",
-        # (打卡LOGO)新北市永和區 / （打卡LOGO）新北市永和區
-        r"[（\(]\s*打卡\s*LOGO\s*[）\)]\s*([^\(\)（）\n]+)",
-        # (打卡)台南 / （打卡）台南
-        r"[（\(]\s*打卡\s*[）\)]\s*([^\(\)（）\n]+)",
-        # 打卡:台南 / 打卡：台南
-        r"(?<!LOGO)打卡\s*[：:]\s*([^\)\n]+)",
-    ]
-
-    for pat in patterns:
-        for m in re.finditer(pat, script, flags=re.IGNORECASE):
-            val = _normalize_token(m.group(1))
-            # 清掉可能被一起抓進來的導演註記，只保留地名本體
-            val = re.sub(r"^(打卡地點|地點|打卡\s*LOGO)\s*[：:]?", "", val, flags=re.IGNORECASE).strip()
-            val = re.sub(r"[-—+＋\s]*打卡符號.*$", "", val, flags=re.IGNORECASE).strip()
-            val = val.strip(" +＋-—,，。；;：:()（）[]【】 ")
-            if val and not re.search(r"(4:3|4:5|ROLL|圖|色塊|LOGO|打卡地點|打卡符號)", val, flags=re.IGNORECASE):
-                badges.append(val)
-
-    return list(dict.fromkeys(badges))
-
-
-def build_roll_location_badge_lock(script: str) -> str:
-    """
-    v22.10：把「高雄三民區---打卡符號」這類寫法綁到 ROLL 框。
-    地點文字可見；「打卡符號」不可見；不可新增圖框。
-    """
-    badges = _extract_location_badges(script)
-    roll_zones = [z for z in _extract_asset_zones(script) if _has_roll_alias(z)]
-    if not badges:
-        return ""
-    target = "nearest requested ROLL/media blank zone" if roll_zones else "nearest requested blank media zone"
-    lines = [f"- Location badge {i}: render ONLY `{loc}` with a map-pin/check-in icon as a small colored strip attached to the {target}." for i, loc in enumerate(badges, start=1)]
-    return (
-        "[ROLL LOCATION BADGE LOCK]\n"
-        "If a line contains `---打卡符號`, `+++打卡符號`, `(打卡LOGO)地名`, `(打卡)地名`, or `打卡地點:地名`, treat the location as an accessory badge for the ROLL/media frame.\n"
-        "Do NOT create an extra asset zone, photo box, ROLL box, or independent text card for this badge.\n"
-        "Render only the location text itself; never render 打卡符號, 打卡LOGO, 打卡地點, or 地點 as words.\n"
-        "The badge may sit inside the ROLL frame edge or attached to the frame border as a colored label, but it must not cover the protected photo/video area content region.\n"
-        + "\n".join(lines)
-    ).strip()
-
-
-def _style_render_ban_text() -> str:
-    """風格名稱只給設計方向，不可成為畫面文字。"""
-    return (
-        "Style names and category labels are INTERNAL DESIGN REFERENCES ONLY. "
-        "Never render any style/category words as visible text, including: "
-        "社會案件, 民生消費, 體育競技, 全球財經, 突發重磅, 選情政論, 科技政策, 綠能永續, 現代民俗, 生醫科技, "
-        "Justice Alert, Crime Scene Noir, Fluid Analytics, Elite Obsidian, Breaking Alert, Democracy Grey, Cyber Policy."
-    )
-
-
-def _forbidden_helper_text_ban() -> str:
-    """所有內部註記、比例字樣、假 placeholder 標籤都不得出現在成品。"""
-    return (
-        "Never render internal layout/helper text, ratio labels, or placeholder labels, including: "
-        "左上圖, 左下圖, 右上圖, 右下圖, 中上文字色塊, 中下文字色塊, 左：, 中：, 右：, 左:, 中:, 右:, 右ROLL框, 左ROLL框, 右ROLL, 左ROLL, 右ROLL=, 左ROLL=, 右ROLL：, 左ROLL：, 右邊ROLL框, 左邊ROLL框, 右邊roll框, 左邊roll框, +++ROLL+++, ++ROLL++, +++右ROLL+++, +++左ROLL+++, 開框ROLL, 開框roll, (開框roll), ROLL框, "
-        "4:3, 4:5, 圖, 色塊, 打卡LOGO, 打卡地點, 打卡, 假人ICON, 假人icon, 假人大頭, 人形ICON, 人物ICON, 對話框, 說話框, speech bubble, 後封保用照片, 後製確認照片, 後製保留照片, "
-        "真實視頻ROLL插投, 真實影片ROLL插投, 真實視頻ROLL, 真實影片ROLL, ROLL/視頻, ROLL/視ideo, 視頻, 影片, video, Video, 編輯圖片區, 圖片區, 4:5商比, 4:3商比, 商比, placeholder, image box, photo, section, card, source marker, debug label."
-    )
-
-
-
-
-def _is_layout_helper_line(text: str) -> bool:
-    """判斷這一行是不是只給導演/AI看的排版註記，不可進入可見文字池。"""
-    raw = str(text or "").strip()
-    if not raw:
-        return False
-    compact = re.sub(r"\s+", "", raw)
-    # +++右ROLL+++、---左圖--- 這類裝飾式版位標記
-    if re.fullmatch(r"[+＋#＃\-—_＝=＊*\s]*(左|右|中|中央|左邊|右邊|中間|上|下|左上|左下|右上|右下|中上|中下)?[+＋#＃\-—_＝=＊*\s]*(圖|圖片|開框ROLL|開框roll|ROLL|roll|Roll|ROLL框|roll框|影片|視頻|色塊|文字色塊|方框|框)[+＋#＃\-—_＝=＊*\s]*(4[:：][35])?[+＋#＃\-—_＝=＊*\s]*", compact, flags=re.IGNORECASE):
-        return True
-    # 左：(圖 4:3)、中：文字色塊、右邊 roll框 4:5
-    if re.fullmatch(r"(左|右|中|中央|左邊|右邊|中間)[:：]?[\s　]*(\(?\s*)?(圖|圖片|開框ROLL|開框roll|ROLL|roll|Roll|ROLL框|roll框|影片|視頻|色塊|文字色塊|方框|框)[^\u4e00-\u9fffA-Za-z0-9]*(4\s*[:：]\s*[35])?\)?", raw, flags=re.IGNORECASE):
-        return True
-    # 括號內是純排版/素材標記
-    stripped = raw.strip('()（）[]【】 ')
-    if re.fullmatch(r"(左|右|中|中央|左邊|右邊|中間|左上|左下|右上|右下|中上|中下)?\s*(圖|圖片|開框ROLL|開框roll|ROLL|roll|Roll|ROLL框|roll框|影片|視頻|色塊|文字色塊|方框|框)\s*(4\s*[:：]\s*[35])?", stripped, flags=re.IGNORECASE):
-        return True
-    return False
-
-
-def _normalize_spatial_alias_text(text: str) -> str:
-    """把右邊/中間/+++右ROLL+++、左ROLL=、右ROLL=、開框roll 等口語寫法標準化給 spatial parser 使用。"""
-    raw = str(text or "")
-    raw = raw.replace("＋", "+").replace("＝", "=")
-    raw = raw.replace("左邊", "左").replace("右邊", "右").replace("中間", "中").replace("中央", "中")
-    raw = re.sub(r"\broll\b", "ROLL", raw, flags=re.IGNORECASE)
-    raw = re.sub(r"(?i)開框\s*ROLL", "開框ROLL", raw)
-    raw = re.sub(r"[+]{2,}", " ", raw)
-    raw = re.sub(r"(左|右|中)\s*ROLL\s*(?:框)?\s*[=:：]", r"\1ROLL框 ", raw, flags=re.IGNORECASE)
-    raw = re.sub(r"(左|右|中)\s*ROLL\s*(?:框)?", r"\1ROLL框", raw, flags=re.IGNORECASE)
-    raw = re.sub(r"開框ROLL\s*(?:框)?", "開框ROLL框", raw, flags=re.IGNORECASE)
-    return raw
-
-def _approved_text_block_for_prompt(script: str) -> str:
-    """取代 raw CONTENT SCRIPT，避免把導演註記餵給 Gemini Image。"""
-    parsed = parse_user_script(script)
-    approved = _extract_approved_text_whitelist(script)
-    approved = list(dict.fromkeys(approved + _extract_location_badges(script)))
-    lines = [f"Headline: {parsed.title or '未提供'}"]
-    if approved:
-        lines.append("Approved visible text:")
-        lines.extend([f"- {x}" for x in approved])
-    else:
-        lines.append("Approved visible text: none")
-    return "\n".join(lines)
-
-
-# =========================================================
-# v22.10 Mandatory Graphic Module Lock：假人ICON / 對話框 / 蓋章 / 筆刷
-# - 假人 ICON 改成數量感知：女假人ICON = 1 個女性圖示；男假人ICON = 1 個男性圖示
-# - 只有明確寫「數個 / 多個 / 群 / 2個 / 3個...」才允許生成人群
-# =========================================================
-FAKE_PERSON_ICON_PATTERN = re.compile(
-    r"(?:數個\s*假人\s*(?:ICON|icon)|假人\s*(?:ICON|icon)|假人大頭|人形\s*(?:ICON|icon)|人物\s*(?:ICON|icon)|人形圖示|人物圖示|女假人\s*(?:ICON|icon)|男假人\s*(?:ICON|icon)|做女假人\s*(?:ICON|icon)|做男假人\s*(?:ICON|icon))",
-    re.IGNORECASE,
-)
-SPEECH_BUBBLE_PATTERN = re.compile(
-    r"(?:大對話框|小對話框|拉對話框|\+對話框|對話框|說話框|speech\s*bubble)",
-    re.IGNORECASE,
-)
-STAMP_PATTERN = re.compile(
-    r"(?:\(#?蓋章[^)]*\)|\(\+蓋章[^)]*\)|\[#?蓋章[^\]]*\]|[#＃]蓋章|蓋章效果|蓋章字|---\s*蓋章|——\s*蓋章)",
-    re.IGNORECASE,
-)
-BRUSH_PATTERN = re.compile(
-    r"(?:\(#?筆刷[^)]*\)|\(\+筆刷[^)]*\)|\[#?筆刷[^\]]*\]|[#＃]筆刷|筆刷效果|\+筆刷字|---\s*筆刷|——\s*筆刷)",
-    re.IGNORECASE,
-)
-
-ICON_NUMBER_MAP: Dict[str, int] = {
-    "一": 1, "二": 2, "兩": 2, "三": 3, "四": 4, "五": 5,
-    "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
-}
-
-
-def _count_pattern_from_script(script: str, pattern: re.Pattern) -> int:
-    """計算原稿裡的 graphic module 次數；至少抓出 1，避免高密度稿件被 Gemini 當裝飾省略。"""
-    matches = pattern.findall(script or "")
-    return len(matches)
-
-
-def _normalize_graphic_marker_key(marker: str) -> str:
-    """同一個圖形標記只算一次；避免 (#做男假人ICON) 又被整行再次掃到。"""
-    t = str(marker or "").strip()
-    t = t.replace("（", "(").replace("）", ")").replace("＋", "+").replace("＃", "#")
-    t = re.sub(r"\s+", "", t)
-    # 去掉外層括號與常見符號，只保留真正的控制詞。
-    t = t.strip("()[]【】{}<>+-=：:;；,，。 ")
-    return t.lower()
-
-
-def _extract_parenthetical_and_line_markers(script: str) -> List[str]:
-    """
-    抓出圖形模組標記，供數量感知 parser 使用。
-    v22 patch：優先吃括號/方括號內的明確標記；整行只在沒有括號標記時才當作 fallback，
-    避免「46歲車手 (#做女假人ICON)」被算成第二個女假人。
-    """
-    if not script:
-        return []
-    markers: List[str] = []
-    seen: set[str] = set()
-
-    def add_marker(m: str) -> None:
-        key = _normalize_graphic_marker_key(m)
-        if not key or key in seen:
-            return
-        if not any(k in m for k in ["假人", "人形ICON", "人物ICON", "對話框", "說話框", "蓋章", "筆刷"]):
-            return
-        seen.add(key)
-        markers.append(m.strip())
-
-    for m in _collect_parenthesis_tags(script) + _collect_square_tags(script):
-        add_marker(m)
-
-    # fallback：支援使用者真的把「#做男假人ICON」單獨寫一行、不加括號的情況。
-    for raw in script.splitlines():
-        line = raw.strip()
-        if not line:
-            continue
-        if "(" in line or ")" in line or "[" in line or "]" in line:
-            # 這類行的標記已由括號 parser 處理，不再整行重複計算。
-            continue
-        if any(k in line for k in ["假人", "人形ICON", "人物ICON", "對話框", "說話框", "蓋章", "筆刷"]):
-            add_marker(line)
-
-    return markers
-
-
-def _parse_icon_quantity(marker: str) -> int:
-    """沒有寫數量時，預設就是 1；不再把假人ICON預設成 group。"""
-    t = marker or ""
-    m = re.search(r"([0-9０-９]+)\s*(?:個|位|名)?\s*(?:男|女)?\s*假人", t, flags=re.IGNORECASE)
-    if m:
-        raw = m.group(1).translate(str.maketrans("０１２３４５６７８９", "0123456789"))
-        try:
-            return max(1, min(10, int(raw)))
-        except Exception:
-            return 1
-    m2 = re.search(r"([一二兩三四五六七八九十])\s*(?:個|位|名)?\s*(?:男|女)?\s*假人", t)
-    if m2:
-        return ICON_NUMBER_MAP.get(m2.group(1), 1)
-    if re.search(r"(數個|多個|一群|群組|一排|多人)", t):
-        return 3
-    return 1
-
-
-def _parse_person_icon_modules(script: str) -> List[Dict[str, Any]]:
-    """假人ICON 數量/性別感知：女/男各自維持 1 個，除非使用者明確寫數量或數個。"""
-    modules: List[Dict[str, Any]] = []
-    for marker in _extract_parenthetical_and_line_markers(script):
-        if not re.search(r"假人\s*(?:ICON|icon)|假人大頭|人形\s*(?:ICON|icon)|人物\s*(?:ICON|icon)|人形圖示|人物圖示", marker, flags=re.IGNORECASE):
-            continue
-        gender = "neutral"
-        if re.search(r"女", marker):
-            gender = "female"
-        elif re.search(r"男", marker):
-            gender = "male"
-        qty = _parse_icon_quantity(marker)
-        type_name = {
-            "female": "FEMALE_PERSON_ICON",
-            "male": "MALE_PERSON_ICON",
-            "neutral": "PERSON_ICON",
-        }[gender]
-        gender_zh = {"female": "女性", "male": "男性", "neutral": "中性"}[gender]
-        plural_rule = "exactly ONE" if qty == 1 else f"exactly {qty}"
-        modules.append({
-            "type": type_name,
-            "count": qty,
-            "name": f"{gender_zh}假人ICON",
-            "source_marker": marker,
-            "instruction": (
-                f"Render {plural_rule} {gender_zh} simple person silhouette icon(s). "
-                "If count is 1, render a single standalone person icon, NOT a group and NOT multiple people. "
-                "Must be visible as icon artwork, not text. Do not omit. Keep outside protected image zones."
-            ),
-        })
-    return modules
-
-
-def detect_mandatory_graphic_modules(
-    script: str
-) -> List[Dict[str, Any]]:
-
-    modules = []
-
-    groups = split_editorial_groups(
-        script
-    )
-
-    for gid, group_text in enumerate(
-        groups
-    ):
-
-        if "女假人" in group_text:
-
-            count = 1
-
-            if re.search(
-                r"[3３三]\s*個",
-                group_text,
-            ):
-                count = 3
-
-            modules.append({
-                "group": gid,
-                "type": "FEMALE_ICON",
-                "count": count,
-            })
-
-        if "男假人" in group_text:
-
-            count = 1
-
-            if re.search(
-                r"[3３三]\s*個",
-                group_text,
-            ):
-                count = 3
-
-            modules.append({
-                "group": gid,
-                "type": "MALE_ICON",
-                "count": count,
-            })
-
-        if "對話框" in group_text:
-
-            modules.append({
-                "group": gid,
-                "type": "SPEECH_BUBBLE",
-                "count": 1,
-                "bind": True,
-            })
-
-        if has_explicit_brush_tag(
-            group_text
-        ):
-
-            modules.append({
-                "group": gid,
-                "type": "BRUSH",
-                "count": 1,
-            })
-
-        if has_explicit_stamp_tag(
-            group_text
-        ):
-
-            modules.append({
-                "group": gid,
-                "type": "STAMP",
-                "count": 1,
-            })
-
-    return modules
-
-def _block_has_person_icon(block_text: str) -> Tuple[bool, str]:
-    if re.search(r"女.*假人|做女假人|女假人", block_text, flags=re.IGNORECASE):
-        return True, "female"
-    if re.search(r"男.*假人|做男假人|男假人", block_text, flags=re.IGNORECASE):
-        return True, "male"
-    if re.search(r"假人\s*(?:ICON|icon)|假人大頭|人形\s*(?:ICON|icon)|人物\s*(?:ICON|icon)", block_text, flags=re.IGNORECASE):
-        return True, "neutral"
-    return False, ""
-
-
-def _clean_block_visible_preview(block_lines: List[str]) -> str:
-    cleaned: List[str] = []
-    for raw in block_lines:
-        line = raw.strip()
-        if not line or re.fullmatch(r"[-—=]{3,}", line):
-            continue
-        # 移除圖形/版型標記，只留下此組真正文字，用於提示模型綁定位置。
-        line = re.sub(r"\([^)]*(?:假人|ICON|icon|對話框|說話框|筆刷|蓋章|色塊|方框)[^)]*\)", "", line)
-        line = re.sub(r"[#＃][^\s]+", "", line)
-        line = _clean_visual_text(line) if '_clean_visual_text' in globals() else line.strip()
-        if line:
-            cleaned.append(line)
-    return " / ".join(cleaned[:6])
-
-
-def build_graphic_module_binding_lock(script: str) -> str:
-    """
-    把「某段文字 + 假人ICON + 對話框」綁成同一組，避免對話框飛到別處、假人被重複生。
-    以 ------ 分段為主；同一段內的 graphic module 必須貼著該段文字卡。
-    """
-    blocks = _split_script_blocks(script) if '_split_script_blocks' in globals() else []
-    groups: List[str] = []
-    icon_total = 0
-    bubble_total = 0
-    for block in blocks:
-        block_text = "\n".join(block)
-        has_icon, gender = _block_has_person_icon(block_text)
-        has_bubble = bool(SPEECH_BUBBLE_PATTERN.search(block_text))
-        if not has_icon and not has_bubble:
-            continue
-        icon_label = {"female": "ONE FEMALE person icon", "male": "ONE MALE person icon", "neutral": "ONE person icon", "": "no person icon"}[gender]
-        if has_icon:
-            icon_total += 1
-        if has_bubble:
-            bubble_total += 1
-        preview = _clean_block_visible_preview(block) or "this text block"
-        parts = []
-        if has_icon:
-            parts.append(icon_label)
-        if has_bubble:
-            parts.append("ONE speech bubble attached to this same block/icon")
-        groups.append(f"- Module group {len(groups)+1}: {', '.join(parts)} → bind to text block: {preview}")
-
-    if not groups:
-        return ""
-
-    return f"""
-[GRAPHIC MODULE BINDING LOCK]
-Graphic modules belong to their own dashed-script block. Do not detach them and do not move them to unrelated cards.
-{NL.join(groups)}
-
-Binding rules:
-- Do not duplicate person icons outside the listed module groups. Total person-icon groups from explicit markers: {icon_total}.
-- Do not create extra person icons from words like 車手、丈夫、老闆娘、被害人、嫌犯; semantic role words are text only unless an explicit 假人ICON marker exists in that block.
-- If a speech bubble appears in the same block as a male/female/person icon, the speech bubble must visually attach to that same icon/block with its tail pointing toward it.
-- Never place a requested speech bubble in a separate unrelated card.
-- Never infer additional icons from nearby text blocks.
-""".strip()
-
-
-def build_mandatory_graphic_module_lock(
-    script: str
-) -> str:
-
-    modules = detect_mandatory_graphic_modules(
-        script
-    )
-
-    groups = split_editorial_groups(
-        script
-    )
-
-    if not modules:
-
-        return """
-[MANDATORY GRAPHIC MODULES]
-No explicit graphic modules detected.
-""".strip()
-
-    lines = []
-
-    for m in modules:
-
-        bind = ""
-
-        if m.get(
-            "bind"
-        ):
-            bind = " (bind)"
-
-        lines.append(
-            f"- GROUP {m['group'] + 1}: "
-            f"{m['type']} "
-            f"x{m['count']}"
-            f"{bind}"
-        )
-
-    return f"""
-[EDITORIAL GROUP LOCK v23]
-
-The user separated the script into {len(groups)} editorial groups.
-
-Elements inside the same group must stay together.
-
-Do not move modules across groups.
-
-{NL.join(lines)}
-
-RULES:
-
-- Explicit icon beats semantic icon detection.
-
-- Never duplicate people because of:
-車手、丈夫、嫌犯、老闆娘。
-
-- One icon means exactly one person.
-
-- Speech bubble must stay attached to its icon.
-
-- Brush / stamp stay inside their group.
-
-- Do not scatter grouped modules.
-""".strip()
-
-
-
-def build_explicit_graphic_effect_lock(
-    script: str
-) -> str:
-
-    has_brush = has_explicit_brush_tag(
-        script
-    )
-
-    has_stamp = has_explicit_stamp_tag(
-        script
-    )
-
-    brush_line = (
-        "Explicit brush tag detected: render brush effect ONLY for the text directly attached to that marker."
-        if has_brush
-        else
-        "No explicit brush tag detected: BRUSH EFFECTS ARE FORBIDDEN."
-    )
-
-    stamp_line = (
-        "Explicit stamp tag detected: render stamp effect ONLY for the text directly attached to that marker."
-        if has_stamp
-        else
-        "No explicit stamp tag detected: STAMP EFFECTS ARE FORBIDDEN."
-    )
-
-    return f"""
-[EXPLICIT GRAPHIC EFFECT LOCK]
-
-Brush and stamp effects are explicit-only.
-
-- {brush_line}
-
-- {stamp_line}
-
-- If the user did not explicitly write:
-筆刷 / #筆刷 / (+筆刷)
-
-Do NOT render brush effects.
-
-- If the user did not explicitly write:
-蓋章 / #蓋章 / (+蓋章)
-
-Do NOT render stamp effects.
-""".strip()
-
-
-
 def build_layout_diagnostics(parsed: ParsedInput, frame_type: str) -> str:
-    """v22 修補：輸出給 Gemini Image 的版面診斷區塊。
-
-    這個函式只產生 prompt 內部診斷文字，不會影響 Streamlit UI。
-    目的：讓 build_final_prompt_v18() 已有的呼叫不再 NameError，
-    同時強化圖區 / 模組 / 跑馬安全區 / 框訊單行標題規則。
-    """
-    image_tags = getattr(parsed, "image_tags", []) or []
-    module_tags = getattr(parsed, "module_tags", []) or []
-    title = clean_inline_text(getattr(parsed, "title", "") or "")
-
-    image_lines: List[str] = []
-    if image_tags:
-        for i, tag in enumerate(image_tags, 1):
-            image_lines.append(
-                f"- Asset zone {i}: {tag} => reserve one clean protected blank area; delete the helper text from final pixels."
-            )
-    else:
-        image_lines.append("- No explicit asset zone detected. Do not invent any photo / video / ROLL box.")
-
-    module_lines: List[str] = []
-    if module_tags:
-        for i, tag in enumerate(module_tags, 1):
-            module_lines.append(
-                f"- Module {i}: {tag} => render only the intended graphic structure; delete the literal instruction text."
-            )
-    else:
-        module_lines.append("- No explicit extra graphic module detected. Do not invent stickers, stamps, brush strokes, or extra cards.")
-
-    frame_notes: List[str] = []
-    if frame_type == "記者說新聞":
-        frame_notes.extend([
-            "- Reporter-news layout: headline stays at the absolute top; explanation modules fill left/right columns.",
-            "- Right-bottom ticker hardware safe zone X>1332, Y>990 is background-only.",
-            "- No text, icon, card, stamp, brush, shadow, or asset zone may enter the ticker safe zone.",
-        ])
-    elif str(frame_type).startswith("框訊") or frame_type == "框訊":
-        frame_notes.extend([
-            "- Framed-news layout: headline is single-line only, even if user supplied two headline phrases.",
-            "- Keep all information cards aligned to a clean broadcast grid.",
-            "- Do not create a second headline bar, subtitle bar, or duplicated headline fragment.",
-        ])
-    else:
-        frame_notes.extend([
-            "- Mega-headline layout: headline dominates the top band.",
-            "- Lower modules must avoid every protected image zone with at least 20px buffer.",
-        ])
-
-    warnings = getattr(parsed, "warnings", []) or []
-    warning_lines = [f"- {w}" for w in warnings] if warnings else ["- No parser warning."]
+    image_list = NL.join([f"- {tag}" for tag in parsed.image_tags]) or "- No explicit image tags detected."
+    module_list = NL.join([f"- {tag}" for tag in parsed.module_tags]) or "- No explicit module tags detected."
 
     return f"""
-[LAYOUT DIAGNOSTICS v22 PATCH]
-Parsed headline: {title if title else '未提供'}
-Frame type: {frame_type}
-Detected protected asset zones: {len(image_tags)}
-Detected graphic / layout modules: {len(module_tags)}
+[DETECTED LAYOUT INTENT]
+Frame Type: {frame_type}
+Detected Image Zones:
+{image_list}
 
-Asset-zone diagnostics:
-{NL.join(image_lines)}
-
-Module diagnostics:
-{NL.join(module_lines)}
-
-Frame-specific diagnostics:
-{NL.join(frame_notes)}
-
-Parser warnings:
-{NL.join(warning_lines)}
-
-Hard diagnostic rules:
-- Preserve every detected asset zone as an empty post-production area.
-- Delete all helper words from final pixels: 圖, ROLL, 圖片區, 編輯圖片區, 4:3, 4:5, 色塊, 對話框, 數據框, 筆刷, 蓋章, 打卡LOGO, 打卡地點.
-- Never add unrequested people, icons, logo, ticker, LIVE, dates, numbers, subtitles, labels, or decorative UI.
-- If space is tight, shrink typography or rearrange modules; never overlap protected zones.
+Detected Modules:
+{module_list}
 """.strip()
+
 
 def build_final_prompt_v18(
     script: str,
@@ -1957,12 +1006,9 @@ def build_final_prompt_v18(
     ai_color: bool,
     notes: str,
     reporter_subtype_override: str = "",
-    asset_aspect: str = "4:3 橫式素材框",
-    visual_variation_mode: str = "固定風格庫",
 ) -> Tuple[str, ParsedInput]:
     parsed = parse_user_script(script)
     style = get_style_config(style_name)
-    aspect_cfg = resolve_asset_aspect(asset_aspect)
 
     safe_zone_text = (
         """
@@ -1986,12 +1032,10 @@ Do not leave unnecessary empty space above it; fill content downward until Y=990
     )
 
     icon_logic = "3D Volumetric / PBR-like depth" if icon_style == "3D" else "Flat 2D clean vector"
-    variation_policy = build_visual_variation_policy(style_name, visual_variation_mode)
-    if str(visual_variation_mode).startswith("AI自由"):
+    if style_name == AI_FREE_STYLE_NAME or str(style_name).startswith("AI自由"):
         color_logic = (
-            f"AI free visual variation WITHIN the content style '{style_name}'. "
-            "Use the detected/selected topic style as the semantic base, but vary background, lighting, card shapes, texture, and composition so outputs do not all look alike. "
-            "Do not leave the topic style and do not add unapproved text or facts."
+            "AI FREE STYLE MODE: AI may decide color palette, background style, typography treatment, card shape, and composition according to the news content; "
+            "not limited to the predefined Visual Director style packs. Must preserve broadcast readability and all asset protection rules."
         )
     else:
         color_logic = (
@@ -2005,14 +1049,10 @@ Do not leave unnecessary empty space above it; fill content downward until Y=990
 CANVAS: 1920x1080 Full HD
 LANGUAGE: Traditional Chinese ONLY
 
-[STYLE - INTERNAL DESIGN REFERENCE ONLY, DO NOT RENDER AS TEXT]
-CONTENT STYLE / TOPIC STYLE: {style_name}
-SELECTED STYLE PRESET: internal visual style reference only, never visible typography.
-{_style_render_ban_text()}
-THEME DIRECTION: {style['theme']}
-UI TEXTURE DIRECTION: {style['ui']}
-VISUAL VARIATION SELECTION: {visual_variation_mode}
-{variation_policy}
+[STYLE]
+STYLE NAME: {style_name}
+THEME: {style['theme']}
+UI TEXTURE: {style['ui']}
 ICON STYLE: {icon_logic}
 COLOR STRATEGY: {color_logic}
 
@@ -2026,46 +1066,13 @@ If Mode is 兩行大標題: force a two-line stacked headline in the top headlin
 Never place the headline in the middle or lower content area.
 Headline must dominate the design. Use huge broadcast-style typography, strong outline, shadow, and layered emphasis.
 
-{build_headline_mode_brief(script, headline_mode, frame_type)}
-
-[HARD HEADLINE LOCK FOR 框訊]
-If Frame Type contains "框訊":
-- MUST use SINGLE LINE headline only.
-- Never split Chinese headline into two lines.
-- Never auto-wrap the headline.
-- Never create secondary headline bars.
-- Never duplicate headline fragments into a subtitle bar.
-- If overflow occurs, reduce font size, tracking, outline thickness, or side margins; keep the headline on one baseline.
-
 [LAYOUT]
 Layout mode: {layout_mode}
 {build_frame_rules(frame_type)}
 
 {build_symbol_matrix_v17()}
 
-[ROLL / IMAGE ASPECT SETTING]
-Selected default asset-zone layout mode: {aspect_cfg['label']}
-Rule: {aspect_cfg['directive']}
-- Per-zone override is allowed and has highest priority.
-- To mix ratios in the same CG, write the ratio inside each image tag: [圖-左ROLL 4:3], [圖-右人物 4:5], (#定監視器畫面 4:3), (LINE截圖 4:5).
-- If a specific image tag contains 4:3, that protected zone must be 4:3 even when the global mode is 4:5 or AI自動配置排版.
-- If a specific image tag contains 4:5, that protected zone must be 4:5 even when the global mode is 4:3 or AI自動配置排版.
-- Image tags without explicit 4:3/4:5 use the selected default mode.
-- If the default mode is AI自動配置排版, choose the best ratio ONLY for each existing unmarked asset zone. Do not add new asset zones for balance. Do not render ratio labels such as 4:3 or 4:5.
-- Preserve clean empty interiors and safety buffers; do not stretch the overall 1920x1080 canvas.
-
-[ASSET ZONE COUNT LOCK]
-- Render exactly the asset zones explicitly provided by the user: {len(parsed.image_tags)} protected blank asset zone(s).
-- Do not create extra photo boxes, video boxes, ROLL boxes, portrait boxes, placeholder boxes, document boxes, or empty frames for design balance.
-- Do not split or duplicate requested asset zones.
-- Never render helper words such as ROLL, video, 視頻, 影片, 圖片區, 編輯圖片區, 4:3, 4:5, 商比.
-- IMPORTANT: deleting the helper text is not enough. Each ROLL/image helper must still reserve its protected blank space.
-
-{build_roll_alias_reserve_lock(script, asset_aspect)}
-
-{build_roll_location_badge_lock(script)}
-
-{build_visual_token_compiler_block(script, frame_type, headline_mode, asset_aspect)}
+{build_visual_token_compiler_block(script, frame_type, headline_mode)}
 
 {build_layout_diagnostics(parsed, frame_type)}
 
@@ -2083,28 +1090,20 @@ Rule: {aspect_cfg['directive']}
 
 [FINAL IMAGE RESTRICTIONS - CRITICAL]
 {STRICT_NO_EXTRA_FACTS.strip()}
-- {_style_render_ban_text()}
-- {_forbidden_helper_text_ban()}
-- If the user provides a location badge, it is MANDATORY: render ONLY the location text itself, for example 新北市永和區; never render 打卡LOGO or 打卡地點 as words.
 - DELETE ALL literal instruction tags, including [圖], [圖-xxx], (#定xxx), (色塊), (對話框), #筆刷.
 - DELETE ALL double quotes and angle brackets after applying visual emphasis.
 - Every detected image placeholder must become a clean empty protected zone for real post-production photos.
 - No text/icon/UI/decoration/stamp/brush effect may touch or overlap protected image zones.
-- Internal helper annotations are forbidden in final pixels: 左上圖, 左下圖, 右ROLL框, 中上文字色塊, 中下文字色塊, 4:3, 4:5, 圖, ROLL框, ROLL, 視頻, 影片, video, 圖片區, 編輯圖片區, 4:5商比, 商比, 色塊, 打卡LOGO.
-- STAMP EFFECT IS EXPLICIT ONLY: Do not create stamp effects unless the user explicitly writes (#蓋章), (+蓋章), #蓋章, ---蓋章, or 蓋章效果.
-- Stamp effects must be outside [圖] placeholders; stamps may sit on card borders, date labels, or background only ONLY when explicitly requested.
-- BRUSH EFFECT IS EXPLICIT ONLY: Do not create brush effects unless the user explicitly writes (#筆刷), (+筆刷), (+筆刷字), (筆刷), #筆刷, ---筆刷, or 筆刷效果.
+- Stamp effects must be outside [圖] placeholders; stamps may sit on card borders, date labels, or background only.
+- BRUSH EFFECT IS EXPLICIT ONLY: Do not create brush effects unless the user explicitly writes (#筆刷), (筆刷), #筆刷, ---筆刷, or 筆刷效果.
 - Do not convert <emphasis>, quotes, numbers, conflict words, or normal body text into brush strokes.
 - Do not duplicate body text into a separate brush/stamp/sticker module unless explicitly tagged. Only promote a sentence once.
-- For all 框訊 layouts: two-line headline is forbidden; stacked headline is forbidden; secondary headline bars made from headline fragments are forbidden.
-- For all 框訊 layouts: the full 大標 block must be rendered; do not drop the second headline phrase.
-- For all 框訊 layouts: if the headline is long, reduce font size or tighten spacing; do not wrap.
 {build_zero_assumption_policy(script)}
 - If any image zone and text compete for space, preserve both by reducing spacing, reducing font size, or rearranging modules.
 - Final result must be a professional TV news CG, not a poster, not a webpage.
 
-[APPROVED CONTENT SUMMARY - DO NOT RENDER THIS SECTION TITLE]
-{_approved_text_block_for_prompt(script)}
+[CONTENT SCRIPT]
+{script.strip()}
 
 [DIRECTOR NOTES]
 {notes.strip()}
@@ -2187,75 +1186,12 @@ Do not show prompt syntax, brackets, debug labels, section names, image-box name
 # v20.5 CG Prompt Translator：把導演規格轉成 Gemini Image 看得懂的乾淨影像 prompt
 # =========================================================
 def _extract_asset_zones(script: str) -> List[str]:
-    """抓出所有素材保護區語法。
-
-    支援：
-    - (右ROLL框 4:5) / [圖-左主 4:3]
-    - 右邊 roll框 4:5
-    - +++右ROLL+++
-    - 左：(圖 4:3) / 右：ROLL框
-    """
+    """抓出所有素材保護區語法：(#定圖)、(圖片)、(定國防部外觀照)、[圖-右主]、(#開框roll) 等。"""
     if not script:
         return []
     tags = _collect_square_tags(script) + _collect_parenthesis_tags(script)
     zones = [tag.strip() for tag in tags if is_asset_protection_tag(tag)]
-
-    for raw_line in (script or "").splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-        normalized = _normalize_spatial_alias_text(line) if '_normalize_spatial_alias_text' in globals() else line
-
-        # 欄位寫法：左：(圖 4:3)、右：ROLL框
-        m = re.match(r"^(左|中|右)\s*[：:]\s*(.+)$", normalized, flags=re.IGNORECASE)
-        if m and re.search(r"(圖|圖片|ROLL|roll|影片|視頻)", m.group(2), flags=re.IGNORECASE):
-            zones.append(f"({m.group(1)}{m.group(2)})")
-            continue
-
-        # 口語/裝飾寫法：右邊 roll框 4:5、+++右ROLL+++、++ROLL++、左ROLL=、開框roll
-        if re.search(r"(打卡符號|打卡LOGO|打卡地點)", line, flags=re.IGNORECASE):
-            # 地點打卡是 ROLL 的附屬 badge，不是新的圖區。
-            continue
-
-        if re.search(r"(圖|圖片|ROLL|roll|Roll|影片|視頻|開框)", normalized, flags=re.IGNORECASE) or _has_roll_alias(normalized):
-            # 排除含真正新聞文字的小標/內文，避免誤抓。純 helper line 才補進圖區。
-            if _is_layout_helper_line(line) or _has_roll_alias(line) or re.fullmatch(r"[+＋#＃\-—_＝=＊*\s]*(左|中|右)?.*?(圖|圖片|ROLL|roll|Roll|開框ROLL|開框roll|影片|視頻).*?[+＋#＃\-—_＝=＊*\s]*(4\s*[:：]\s*[35])?[+＋#＃\-—_＝=＊*\s]*", normalized, flags=re.IGNORECASE):
-                zones.append(f"({line})")
-
-    return _dedupe_asset_zone_list(list(dict.fromkeys([z for z in zones if z])))
-
-
-def build_roll_alias_reserve_lock(script: str, asset_aspect: str = "AI自動配置排版") -> str:
-    """
-    v22.8：ROLL alias is an asset-zone instruction, not visible text.
-    Ensures shorthand like ++ROLL++, 左ROLL=, 右ROLL：, (開框roll) reserves blank space.
-    """
-    zones = _extract_asset_zones(script)
-    roll_zones = [z for z in zones if _has_roll_alias(z)]
-    if not roll_zones:
-        return ""
-
-    lines = []
-    for idx, tag in enumerate(roll_zones, start=1):
-        col = _detect_column_from_text(tag) or "AUTO"
-        vert = _detect_vertical_from_text(tag) or "AUTO"
-        ratio = resolve_asset_aspect_for_tag(tag, asset_aspect).get("ratio", "auto")
-        col_label = {"LEFT": "left column", "CENTER": "center column", "RIGHT": "right column", "AUTO": "AI-selected column"}.get(col, col)
-        vert_label = {"TOP": "top", "BOTTOM": "bottom", "AUTO": "AI-selected vertical position"}.get(vert, vert)
-        open_note = "open-frame ROLL" if re.search(r"開框", tag, flags=re.IGNORECASE) else "ROLL/media"
-        lines.append(f"- Requested {open_note} blank asset zone {idx}: reserve clean empty space, {ratio} ratio, {col_label}, {vert_label}. Do NOT render the source marker text `{tag}`.")
-
-    return (
-        "[ROLL ALIAS RESERVE LOCK]\n"
-        "The following shorthand markers are INTERNAL LAYOUT INSTRUCTIONS that MUST reserve visible blank media space.\n"
-        "They are not visible text and must never be printed on the artwork.\n"
-        f"{NL.join(lines)}\n"
-        "Rules:\n"
-        "- Every ROLL alias marker creates one protected blank ROLL/media area.\n"
-        "- Do not ignore these aliases. Do not merely delete them. Reserve the space.\n"
-        "- Do not render ROLL, roll, 開框roll, 左ROLL, 右ROLL, ++ROLL++, +++右ROLL+++, 4:3, or 4:5 as text.\n"
-        "- Keep interiors empty for post-production footage/photo insertion."
-    ).strip()
+    return list(dict.fromkeys([z for z in zones if z]))
 
 
 def _extract_approved_text_whitelist(script: str) -> List[str]:
@@ -2308,17 +1244,9 @@ def _extract_approved_text_whitelist(script: str) -> List[str]:
         line = " ".join(raw.strip().split())
         if not line:
             continue
-        # 欄位 key / 特效 / ROLL / 圖區註記只給導演理解，不可成為畫面文字。
-        line = re.sub(r"^(主標|大標|標題|標|小標)\s*[=:：＝]\s*", "", line).strip()
-        if not line:
-            continue
-        if _is_control_or_effect_visible_text(line):
-            continue
-        if _is_layout_helper_line(line):
-            continue
 
         # 過濾欄位控制字。
-        if line in ["左", "右", "中", "中央", "上", "下", "大標", "主標", "標", "標題", "內容", "框訊", "圖片"]:
+        if line in ["左", "右", "上", "下", "大標", "標", "內容", "框訊", "圖片"]:
             continue
 
         if len(line) > 34:
@@ -2359,9 +1287,7 @@ def _clean_visual_text(text: str) -> str:
         t = t.replace(tag, " ")
     t = re.sub(r"\([^)]*(?:色塊|方框|對話框|數據框|筆刷|蓋章|icon|假人|打卡)[^)]*\)", " ", t)
     t = re.sub(r"^[\-—=]{2,}$", " ", t)
-    for _hk in ["標題:", "標題：", "標題=", "標題＝", "大標:", "大標：", "大標=", "大標＝", "主標:", "主標：", "主標=", "主標＝", "標:", "標：", "標=", "標＝"]:
-        t = t.replace(_hk, "")
-    t = t.replace("小標:", "").replace("小標=", "")
+    t = t.replace("標題:", "").replace("標題=", "").replace("大標:", "").replace("大標=", "")
     t = t.replace("標:", "").replace("標=", "")
     t = t.replace("<", "").replace(">", "")
     t = t.replace("【", "").replace("】", "")
@@ -2392,30 +1318,8 @@ def _split_script_blocks(script: str) -> List[List[str]]:
 def _asset_zone_spatial_hint(tag: str, index: int, total: int, frame_type: str) -> str:
     """
     v22：把圖區翻成新聞台美術語言，不輸出 debug 字。
-    若使用者在 tag 裡寫左/中/右/上/下，這裡只保留為位置語意，
-    不把原始標籤文字交給影像模型當成可見文字。
     """
     t = (tag or "").lower()
-    pos_hint = ""
-    raw = tag or ""
-    if "左上" in raw:
-        pos_hint = " placed in the upper-left area as requested, "
-    elif "左下" in raw:
-        pos_hint = " placed in the lower-left area as requested, "
-    elif "右上" in raw:
-        pos_hint = " placed in the upper-right area as requested, "
-    elif "右下" in raw:
-        pos_hint = " placed in the lower-right area as requested, "
-    elif "中上" in raw:
-        pos_hint = " placed in the upper-center area as requested, "
-    elif "中下" in raw:
-        pos_hint = " placed in the lower-center area as requested, "
-    elif "左" in raw:
-        pos_hint = " placed in the left column as requested, "
-    elif "中" in raw:
-        pos_hint = " placed in the center column as requested, "
-    elif "右" in raw:
-        pos_hint = " placed in the right column as requested, "
 
     if any(k in tag for k in ["常如山圖", "工程師圖", "特助圖", "人圖", "人物圖"]):
         return (
@@ -2427,24 +1331,24 @@ def _asset_zone_spatial_hint(tag: str, index: int, total: int, frame_type: str) 
     if "roll" in t or "roll" in tag or "ROLL" in tag:
         if "1/3" in tag or "三分之一" in tag:
             return (
-                "a large main blank media area, about one third of the canvas, "
-                f"{pos_hint or 'placed in a main visual zone, '}"
-                "blank interior reserved for real post-production material insertion"
+                "a large main ROLL/photo area, about one third of the canvas, "
+                "placed in the lower-left or left main visual zone, "
+                "blank interior reserved for real footage insertion"
             )
         if "1/4" in tag or "四分之一" in tag:
             return (
-                "a large main blank media area, about one quarter of the canvas, "
-                f"{pos_hint or 'placed in a main visual zone, '}"
-                "blank interior reserved for real post-production material insertion"
+                "a large main ROLL/photo area, about one quarter of the canvas, "
+                "placed in the lower-left or left main visual zone, "
+                "blank interior reserved for real footage insertion"
             )
         return (
-            f"a large main blank media area {pos_hint or 'in a main visual zone, '}"
-            "blank interior reserved for real post-production material insertion"
+            "a large main ROLL/photo area in the left or lower-left visual zone, "
+            "blank interior reserved for real footage insertion"
         )
 
     if any(k in tag for k in ["簽約", "合約", "文件", "文書", "書面"]):
         return (
-            f"a document evidence area {pos_hint or 'near the related text module, '}"
+            "a document evidence area near the related text module, "
             "clean blank interior reserved for a real document image"
         )
 
@@ -2455,257 +1359,18 @@ def _asset_zone_spatial_hint(tag: str, index: int, total: int, frame_type: str) 
         )
 
     return (
-        f"a clean editorial blank media area {pos_hint or 'clearly separated from text, '}"
+        "a clean editorial photo/video zone, clearly separated from text, "
         "blank for post-production real image insertion"
     )
 
-
-
-def _detect_column_from_text(text: str) -> str:
-    raw = _normalize_spatial_alias_text(text or "") if '_normalize_spatial_alias_text' in globals() else str(text or "")
-    if "左" in raw:
-        return "LEFT"
-    if "中" in raw:
-        return "CENTER"
-    if "右" in raw:
-        return "RIGHT"
-    return ""
-
-
-def _detect_vertical_from_text(text: str) -> str:
-    raw = str(text or "")
-    if "上" in raw:
-        return "TOP"
-    if "下" in raw:
-        return "BOTTOM"
-    return ""
-
-
-def detect_spatial_mode(script: str) -> str:
-    """
-    三層位置模式：
-    1. EXACT_POSITION：左上/左下/中上/中下/右上/右下 → 欄位與上下都硬鎖。
-    2. COLUMN_POSITION：左：/中：/右： 或 左圖/右ROLL/中文字色塊 → 只鎖欄位，欄內上下交給 AI。
-    3. AI_FREE：沒有任何位置標記 → 保留 AI 自動配置排版。
-    """
-    raw = _normalize_spatial_alias_text(script or "")
-    if re.search(r"(左上|左下|右上|右下|中上|中下)", raw):
-        return "EXACT_POSITION"
-    if re.search(r"(^|\n)\s*(左|中|右)\s*[：:]", raw):
-        return "COLUMN_POSITION"
-    if re.search(r"[(\[]\s*(左|中|右)(?!上|下)[^\]\)]*(圖|ROLL|roll|色塊|文字|框)", raw, flags=re.IGNORECASE):
-        return "COLUMN_POSITION"
-    if re.search(r"(^|\n)\s*[+＋#＃\-—_＝=＊*\s]*(左|中|右).*?(圖|ROLL|roll|Roll|開框ROLL|色塊|文字|框).*?[+＋#＃\-—_＝=＊*\s]*(?=\n|$)", raw, flags=re.IGNORECASE):
-        return "COLUMN_POSITION"
-    if _has_roll_alias(raw) and re.search(r"(左|右|中)", raw):
-        return "COLUMN_POSITION"
-    return "AI_FREE"
-
-
-def _clean_spatial_visible_text(text: str) -> str:
-    """空間解析用：只取語意，不輸出導演 helper 字。"""
-    if _is_layout_helper_line(text):
-        return ""
-    t = _clean_visual_text(_normalize_spatial_alias_text(text or ""))
-    t = re.sub(r"^(左|中|右)\s*[：:]", "", t).strip()
-    t = re.sub(r"(左上|左下|右上|右下|中上|中下|左|中|右)", "", t)
-    t = re.sub(r"(圖|圖片|ROLL框|ROLL|roll|影片|視頻|文字色塊|色塊|4\s*[:：]\s*[35]|[+＋#＃\-—_＝=＊*]+)", "", t, flags=re.IGNORECASE)
-    return " ".join(t.split()).strip()
-
-
-def _extract_spatial_items(script: str, asset_aspect: str = "AI自動配置排版") -> List[Dict[str, str]]:
-    """從原稿抽出位置註記，但不把註記字樣當成畫面文字。"""
-    items: List[Dict[str, str]] = []
-
-    # 先從完整 tag 抽一次，這樣多行括號如：
-    # (右ROLL框 4:5
-    # +打卡LOGO:新北市永和區)
-    # 也能正確保留「右」與 4:5，不會被逐行 parser 漏掉。
-    for tag in _extract_asset_zones(script):
-        col = _detect_column_from_text(tag)
-        vert = _detect_vertical_from_text(tag)
-        if col or vert:
-            zcfg = resolve_asset_aspect_for_tag(tag, asset_aspect)
-            items.append({
-                "kind": "asset",
-                "column": col or "AUTO",
-                "vertical": vert or "AUTO",
-                "ratio": zcfg.get("ratio", "auto"),
-                "source": tag,
-                "visible_text": "",
-            })
-
-    for tag in parse_user_script(script).module_tags:
-        if is_asset_protection_tag(tag):
-            continue
-        col = _detect_column_from_text(tag)
-        vert = _detect_vertical_from_text(tag)
-        if col or vert:
-            items.append({
-                "kind": "text",
-                "column": col or "AUTO",
-                "vertical": vert or "AUTO",
-                "ratio": "text",
-                "source": tag,
-                "visible_text": "",
-            })
-
-    lines = (script or "").splitlines()
-    pending_text_position: Optional[Tuple[str, str]] = None
-
-    for raw in lines:
-        line = raw.strip()
-        if not line:
-            continue
-        normalized_line = _normalize_spatial_alias_text(line)
-
-        # 欄位級寫法：左：(圖 4:3) / 中：文字色塊 / 右：ROLL框
-        prefix_col = ""
-        prefix_match = re.match(r"^(左|中|右)\s*[：:]\s*(.*)$", normalized_line)
-        content = normalized_line
-        if prefix_match:
-            prefix_col = {"左": "LEFT", "中": "CENTER", "中央": "CENTER", "右": "RIGHT"}.get(prefix_match.group(1), "")
-            content = prefix_match.group(2).strip()
-
-        tags = _collect_parenthesis_tags(content) + _collect_square_tags(content)
-        handled = False
-        for tag in tags:
-            is_asset = is_asset_protection_tag(tag)
-            is_text_module = bool(re.search(r"(文字|色塊|方框|對話框|數據框)", tag)) and not is_asset
-            if not (is_asset or is_text_module):
-                continue
-            col = prefix_col or _detect_column_from_text(tag)
-            vert = _detect_vertical_from_text(tag)
-            if not col and not vert:
-                continue
-            kind = "asset" if is_asset else "text"
-            zcfg = resolve_asset_aspect_for_tag(tag, asset_aspect) if kind == "asset" else {"ratio": "text"}
-            items.append({
-                "kind": kind,
-                "column": col or "AUTO",
-                "vertical": vert or "AUTO",
-                "ratio": zcfg.get("ratio", "auto"),
-                "source": tag,
-                "visible_text": "",
-            })
-            handled = True
-            if kind == "text":
-                pending_text_position = (col or "AUTO", vert or "AUTO")
-
-        # 無括號欄位寫法：中：文字色塊 / 右：ROLL框
-        if prefix_col and not handled:
-            if re.search(r"(圖|ROLL|roll|影片|照片)", content):
-                pseudo = f"({content})"
-                zcfg = resolve_asset_aspect_for_tag(pseudo, asset_aspect)
-                items.append({"kind": "asset", "column": prefix_col, "vertical": "AUTO", "ratio": zcfg.get("ratio", "auto"), "source": pseudo, "visible_text": ""})
-            elif re.search(r"(文字|色塊|方框|卡|模組)", content):
-                items.append({"kind": "text", "column": prefix_col, "vertical": "AUTO", "ratio": "text", "source": content, "visible_text": ""})
-                pending_text_position = (prefix_col, "AUTO")
-            else:
-                vt = _clean_spatial_visible_text(content)
-                if vt:
-                    items.append({"kind": "text", "column": prefix_col, "vertical": "AUTO", "ratio": "text", "source": "column text", "visible_text": vt})
-                    pending_text_position = (prefix_col, "AUTO")
-
-        # 無前綴但有口語/裝飾位置：右邊 roll框 4:5 / +++右ROLL+++ / 中間文字色塊
-        elif not prefix_col and re.search(r"(左|中|右)", normalized_line) and re.search(r"(圖|圖片|ROLL|roll|影片|視頻|文字|色塊|方框|框)", normalized_line, flags=re.IGNORECASE):
-            if re.search(r"(圖|圖片|ROLL|roll|影片|視頻)", normalized_line, flags=re.IGNORECASE):
-                zcfg = resolve_asset_aspect_for_tag(f"({line})", asset_aspect)
-                items.append({"kind": "asset", "column": _detect_column_from_text(normalized_line) or "AUTO", "vertical": _detect_vertical_from_text(normalized_line) or "AUTO", "ratio": zcfg.get("ratio", "auto"), "source": line, "visible_text": ""})
-            elif re.search(r"(文字|色塊|方框|卡|模組)", normalized_line):
-                col = _detect_column_from_text(normalized_line) or "AUTO"
-                vert = _detect_vertical_from_text(normalized_line) or "AUTO"
-                items.append({"kind": "text", "column": col, "vertical": vert, "ratio": "text", "source": line, "visible_text": ""})
-                pending_text_position = (col, vert)
-
-        # 接在「(中上文字色塊)」後面的真正小標/內文，綁回該文字色塊的位置。
-        elif pending_text_position and not line.startswith(("(", "[", "+", "＋", "大標", "標題", "標:")):
-            if re.search(r"(打卡LOGO|打卡地點|地點\s*[：:])", line, flags=re.IGNORECASE):
-                continue
-            vt = _clean_spatial_visible_text(line)
-            if vt and not re.fullmatch(r"[-—=]{3,}", line):
-                col, vert = pending_text_position
-                items.append({"kind": "text_content", "column": col, "vertical": vert, "ratio": "text", "source": "text content", "visible_text": vt})
-
-    # 去重：保留順序；asset 用 canonical key 去重，避免同一 ROLL/圖區被重複算成多個洞。
-    deduped: List[Dict[str, str]] = []
-    seen = set()
-    for it in items:
-        if it.get("kind") == "asset":
-            key = ("asset", _canonical_asset_zone_key(it.get("source", "")))
-        else:
-            key = (it["kind"], it["column"], it["vertical"], it["ratio"], it.get("visible_text", ""), it.get("source", ""))
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(it)
-    return deduped
-
-
-def build_spatial_layout_lock(script: str, asset_aspect: str = "AI自動配置排版") -> str:
-    """條件式位置鎖：有標位置才鎖；沒標位置就保留 AI 自主排版。"""
-    mode = detect_spatial_mode(script)
-    items = _extract_spatial_items(script, asset_aspect)
-
-    if mode == "AI_FREE":
-        return """
-[SPATIAL LAYOUT MODE]
-No explicit left/center/right/top/bottom spatial markers were found.
-AI may freely choose the best newsroom composition for the existing requested text modules and protected blank asset areas.
-Do not create extra asset zones and do not render helper labels.
-""".strip()
-
-    col_name = {"LEFT": "LEFT COLUMN", "CENTER": "CENTER COLUMN", "RIGHT": "RIGHT COLUMN", "AUTO": "UNSPECIFIED COLUMN"}
-    vert_name = {"TOP": "top position", "BOTTOM": "bottom position", "AUTO": "AI may choose vertical order inside this column"}
-    lines: List[str] = []
-    for it in items:
-        kind = {
-            "asset": "protected blank asset area",
-            "text": "text information block",
-            "text_content": "visible text belonging to the previous text block",
-        }.get(it["kind"], it["kind"])
-        extra = f"; internal ratio {it['ratio']}" if it["kind"] == "asset" else ""
-        visible = f"; visible text: {it['visible_text']}" if it.get("visible_text") else ""
-        lines.append(f"- {col_name.get(it['column'], it['column'])}: {vert_name.get(it['vertical'], it['vertical'])} → {kind}{extra}{visible}")
-
-    if not lines:
-        lines.append("- Spatial markers were detected, but no valid module was extracted. Respect the left/center/right semantics from the user script silently.")
-
-    if mode == "EXACT_POSITION":
-        header = "[SPATIAL LAYOUT LOCK - EXACT POSITION]"
-        rule = "Use a strict three-column / upper-lower newsroom grid. User-specified column and top/bottom positions are mandatory."
-        freedoms = "Do not rebalance, swap columns, move left assets to center, move right media to left, or move center text cards to another column."
-    else:
-        header = "[SPATIAL LAYOUT LOCK - COLUMN POSITION]"
-        rule = "Respect user-specified LEFT / CENTER / RIGHT columns. Vertical order inside each column may be optimized by AI unless top/bottom is explicitly written."
-        freedoms = "Do not swap columns. Do not move left-column items to center/right, center-column items to left/right, or right-column items to left/center."
-
-    return f"""
-{header}
-{rule}
-
-Extracted internal spatial map, NOT visible text:
-{NL.join(lines)}
-
-Hard spatial rules:
-- Position words such as 左、右、中、上、下 are layout instructions only; never render those helper words on screen.
-- Keep the final artwork consistent with the extracted spatial map.
-- {freedoms}
-- If the layout is crowded, reduce font size, spacing, or module padding; do not violate the requested spatial positions.
-""".strip()
-
-def build_visual_token_compiler_block(script: str, frame_type: str, headline_mode: str, asset_aspect: str = "4:3 橫式素材框") -> str:
+def build_visual_token_compiler_block(script: str, frame_type: str, headline_mode: str) -> str:
     """
     v22：內部仍解析 headline / text groups / asset zones，
     但給 Gemini Image 的是新聞台資深美術 briefing。
     不輸出 SECTION_CARD_01 / IMAGE_BOX_01 / compiler count 這類機器語言。
     """
     parsed = parse_user_script(script)
-    aspect_cfg = resolve_asset_aspect(asset_aspect)
-    headline_lines = extract_headline_lines(script)
-    headline_line_set = set(headline_lines)
-    title = build_headline_display_text(script, headline_mode)
-    title_for_inline = _clean_visual_text(title.replace("\n", ""))
+    title = _clean_visual_text(parsed.title)
     asset_zones = _extract_asset_zones(script)
     blocks = _split_script_blocks(script)
 
@@ -2713,10 +1378,9 @@ def build_visual_token_compiler_block(script: str, frame_type: str, headline_mod
     for block in blocks:
         clean_lines: List[str] = []
         for line in block:
-            cleaned_for_headline_check = _clean_visual_text(line)
-            if line.strip() == parsed.title.strip() or cleaned_for_headline_check in headline_line_set or line.strip().startswith(("標:", "標：", "標=", "標＝", "大標:", "大標：", "大標=", "大標＝", "主標:", "主標：", "主標=", "主標＝", "標題:", "標題：", "標題=", "標題＝")):
+            if line.strip() == parsed.title.strip() or line.strip().startswith(("標:", "標=", "大標:", "大標=", "標題:", "標題=")):
                 continue
-            if is_asset_protection_tag(line) or _is_layout_helper_line(line):
+            if is_asset_protection_tag(line):
                 continue
             if re.fullmatch(r"[-—=]{3,}", line):
                 continue
@@ -2739,29 +1403,20 @@ def build_visual_token_compiler_block(script: str, frame_type: str, headline_mod
     if not text_group_lines:
         text_group_lines.append("- No body text module provided. Keep the content area clean and do not invent text.")
 
-    location_badges = _extract_location_badges(script)
-    if location_badges:
-        for loc in location_badges:
-            text_group_lines.append(f"- MANDATORY ROLL-attached location badge: render ONLY the location text `{loc}` with a map-pin/check-in icon as a small colored strip attached to the requested ROLL/media frame. Do not render 打卡符號, 打卡LOGO, 打卡地點, or 地點 as words. Do not create an extra asset zone for this badge.")
-
     visual_zone_lines: List[str] = []
     if portrait_tags:
-        portrait_ratios = ", ".join([resolve_asset_aspect_for_tag(z, asset_aspect)['ratio'] for z in portrait_tags])
         visual_zone_lines.append(
-            f"- Internal layout instruction: reserve {len(portrait_tags)} portrait-style blank area(s) with clean borders and empty interiors. Per-area ratio instructions: {portrait_ratios}. Do not write any label or ratio on screen."
+            f"- Portrait strip: {len(portrait_tags)} equal vertical portrait slots, aligned like Taiwanese crime-news mugshot panels, with clean borders and blank interiors for real photos."
         )
     for tag in roll_tags:
-        zcfg = resolve_asset_aspect_for_tag(tag, asset_aspect)
-        visual_zone_lines.append(f"- Internal layout instruction: reserve one requested blank media area with {zcfg['ratio']} ratio. {_asset_zone_spatial_hint(tag, 0, len(asset_zones), frame_type)} Do not render the original marker text or ratio words.")
+        visual_zone_lines.append(f"- Main footage zone: {_asset_zone_spatial_hint(tag, 0, len(asset_zones), frame_type)}")
     for tag in document_tags:
-        zcfg = resolve_asset_aspect_for_tag(tag, asset_aspect)
-        visual_zone_lines.append(f"- Internal layout instruction: reserve one requested blank document/evidence area with {zcfg['ratio']} ratio. {_asset_zone_spatial_hint(tag, 0, len(asset_zones), frame_type)} Do not render the original marker text or ratio words.")
+        visual_zone_lines.append(f"- Document/evidence zone: {_asset_zone_spatial_hint(tag, 0, len(asset_zones), frame_type)}")
     for i, tag in enumerate(other_tags, start=1):
-        zcfg = resolve_asset_aspect_for_tag(tag, asset_aspect)
-        visual_zone_lines.append(f"- Internal layout instruction: reserve one requested blank media area with {zcfg['ratio']} ratio. {_asset_zone_spatial_hint(tag, i, len(asset_zones), frame_type)} Do not render the original marker text or ratio words.")
+        visual_zone_lines.append(f"- Editorial image zone {i}: {_asset_zone_spatial_hint(tag, i, len(asset_zones), frame_type)}")
 
     if not visual_zone_lines:
-        visual_zone_lines.append("- No explicit blank asset area was provided. Do not invent fake media frames or unnecessary placeholders.")
+        visual_zone_lines.append("- No explicit image zone was provided. Do not invent fake photos or unnecessary placeholders.")
 
     if any(word in script for word in ["罪嫌", "性剝削", "聲押", "報案", "偷拍", "偵辦", "羈押"]):
         suggested_layout = (
@@ -2788,21 +1443,14 @@ Do not render any instruction labels, module labels, placeholder labels, debug l
 
 Headline treatment:
 - Use {headline_mode}.
-{build_headline_mode_brief(script, headline_mode, frame_type)}
+- Exact headline text: {title or '未提供'}
 - Place the headline at the top only.
-- If this is a 框訊 layout, the COMPLETE headline must appear on ONE SINGLE LINE: no missing second phrase, no wrapping, no stacked headline, no second headline bar.
-- For 框訊, fit the full headline on one baseline by reducing font size, tracking, outline thickness, or side margins.
-- If this is 標大框 and headline mode is 兩行大標題, keep LINE 1 and LINE 2 as two separate mega headline rows.
 - Make it visually dominant, like an on-air Taiwanese TV news mega headline.
 - Use layered Chinese broadcast typography: thick strokes, outline, shadow, strong contrast.
 - Render the headline once only. Do not duplicate names or headline fragments.
 
 User-provided text to arrange:
 {NL.join(text_group_lines)}
-
-{build_mandatory_graphic_module_lock(script)}
-
-{build_explicit_graphic_effect_lock(script)}
 
 Text arrangement rules:
 - Use only the user-provided Traditional Chinese text above.
@@ -2811,17 +1459,11 @@ Text arrangement rules:
 - Do not delete text because the layout is crowded.
 - If crowded, reduce font size, line spacing, or module padding, or rearrange the layout.
 
-{build_spatial_layout_lock(script, asset_aspect)}
-
-Protected blank asset areas to leave blank:
-- Total requested blank asset area count: {len(asset_zones)}. Final artwork must contain exactly this count; do not add extra frames.
-- Asset zone layout mode: {aspect_cfg['label']} ({aspect_cfg['ratio']}). Apply ratio instructions only to existing requested blank areas, silently; never display ratio words.
+Photo / video / document areas to leave blank:
 {NL.join(visual_zone_lines)}
 
 Image-zone rules:
 - These are blank areas for later post-production.
-- ROLL aliases such as ++ROLL++, +++右ROLL+++, 左ROLL=, 右ROLL：, and (開框roll) MUST reserve actual blank media areas here; never treat them as text-only notes.
-- A line like 高雄三民區---打卡符號 is a location badge attached to the ROLL frame; it must not create an extra blank zone.
 - Keep interiors clean and empty.
 - No fake photo, no fake screenshot, no icon, no text, no label, no decoration inside.
 - Do not show words such as photo, image box, placeholder, section, source marker, or debug label.
@@ -2863,13 +1505,13 @@ def _frame_visual_intent(frame_type: str, reporter_subtype: str, headline_mode: 
             "right-bottom 588x90 ticker exclusion area kept as background only"
         )
     if frame_type == "框訊・數據分析":
-        return "single-line top headline only; data-driven news infographic layout with large number cards, chart-like blocks, expert quote panel, clean hierarchy"
+        return "data-driven news infographic layout with large number cards, chart-like blocks, expert quote panel, clean hierarchy"
     if frame_type == "框訊・流程關係":
-        return "single-line top headline only; relationship flow diagram layout with role nodes, connector lines, one protected large photo placeholder, clean investigative news graphics"
+        return "relationship flow diagram layout with role nodes, connector lines, one protected large photo placeholder, clean investigative news graphics"
     if frame_type == "框訊・對打時間軸":
-        return "single-line top headline only; debate and timeline news layout with two opposing quote zones, one large protected media placeholder, bottom timeline strip"
+        return "debate and timeline news layout with two opposing quote zones, one large protected media placeholder, bottom timeline strip"
     if frame_type == "框訊・多圖對比":
-        return "single-line top headline only; multi-image comparison news layout with several clean protected photo placeholders, comparison cards, clear left-right contrast"
+        return "multi-image comparison news layout with several clean protected photo placeholders, comparison cards, clear left-right contrast"
     return "professional modular TV news graphic layout with clear headline band and protected asset placeholders"
 
 
@@ -2945,35 +1587,28 @@ Reference style if needed: {base_style}.
 
 
 def _asset_zone_prompt(asset_zones: List[str], transparent_holes: bool) -> str:
-    requested_count = len(asset_zones)
     if not asset_zones:
         return (
-            "ASSET ZONE COUNT LOCK: The user provided 0 asset markers. Do not create any blank media/photo/video frame unless the user explicitly requests one."
+            "No explicit asset markers were provided; if a photo area is needed, create one clean protected blank photo placeholder."
         )
-    zone_list = "\n".join([f"- Internal requested blank area {i}: {_safe_zone_ratio_label(z)}" for i, z in enumerate(asset_zones[:12], start=1)])
+    zone_list = "\n".join([f"- {z}" for z in asset_zones[:12]])
     fill_style = (
         "plain transparent-looking or light neutral empty rectangles"
         if transparent_holes else
         "clean dark or neutral empty rectangles with subtle broadcast frame"
     )
     return f"""
-[ASSET ZONE COUNT LOCK]
-The user explicitly requested {requested_count} protected blank asset area(s).
-Final artwork must contain EXACTLY {requested_count} blank asset frame(s), no more and no fewer.
-Do not create extra photo frames, video frames, ROLL frames, portrait boxes, document boxes, placeholder boxes, or empty frames for design balance.
-Do not split one requested area into multiple frames.
-Do not duplicate any requested area.
-Ratio instructions apply ONLY to the existing requested blank areas below, silently. Ratio text must never appear on screen.
+Newsroom post-production blank image zones requested by the user:
 {zone_list}
-
-For each requested marker, reserve one clean blank area in the CG layout.
+For each requested image/photo/video/document marker, reserve a clean blank area in the CG layout.
 These areas are for real post-production material, not AI-generated content.
 Interior must be {fill_style}.
 No fake photos, no fake screenshots, no icons, no labels, no text, no stamps, no brush strokes, no arrows, no decorations inside.
-Keep at least 40px clean safety buffer around every blank area.
-Never render helper annotations or ratio labels, including 左上圖, 左下圖, 右ROLL框, 中上文字色塊, 中下文字色塊, 圖, ROLL框, ROLL, 視頻, 影片, video, 色塊, 4:3, 4:5, 商比, IMAGE, PHOTO, PLACEHOLDER, SECTION, CARD, SOURCE, 編輯圖片區, 圖片區.
-If the layout is crowded, rearrange modules or reduce font size. Do not invade blank areas and do not delete user-provided text.
+Keep at least 40px clean safety buffer around every blank image zone.
+Do not render marker words such as 定圖, 圖片, 開框roll, 外觀照, LINE截圖.
+If the layout is crowded, rearrange modules or reduce font size. Do not invade image zones and do not delete user-provided text.
 """.strip()
+
 
 def build_image_prompt_translator(
     script: str,
@@ -2985,7 +1620,6 @@ def build_image_prompt_translator(
     no_text_mode: bool = False,
     transparent_holes: bool = False,
     background_mode: str = "AI自動判斷（依內容自由配色＋生成底圖）",
-    asset_aspect: str = "4:3 橫式素材框",
 ) -> Dict[str, str]:
     """
     產生 Gemini Image 專用 prompt。
@@ -2997,9 +1631,8 @@ def build_image_prompt_translator(
     parsed = parse_user_script(script)
     asset_zones = _extract_asset_zones(script)
     approved_text = _extract_approved_text_whitelist(script)
-    approved_text = list(dict.fromkeys(approved_text + _extract_location_badges(script)))
     title = _strip_director_syntax(parsed.title)[:60]
-    visual_compiler = build_visual_token_compiler_block(script, frame_type, headline_mode, asset_aspect)
+    visual_compiler = build_visual_token_compiler_block(script, frame_type, headline_mode)
     # v20.6.6：不要再把原始 DSL 長文直接餵給圖片模型；改用已去符號、去繼承的 compiler 摘要。
     content_hint = _strip_director_syntax(script)[:260]
 
@@ -3018,7 +1651,7 @@ def build_image_prompt_translator(
             "Never add, rewrite, translate, summarize, or invent any text. "
             "Never duplicate names, numbers, keywords, or headline fragments. "
             "Do not omit approved text from the user-provided layout. "
-            "Do not render internal instruction labels, debug labels, card labels, image-box labels, source-marker labels, prompt syntax, style/category labels, or English labels. Never render layout helper words such as 左上圖, 左下圖, 右ROLL框, 中上文字色塊, 中下文字色塊, 4:3, 4:5, 圖, ROLL框, 色塊, 打卡LOGO, 打卡地點, 打卡, 假人ICON, 假人icon, 假人大頭, 人形ICON, 人物ICON, 對話框, 說話框, speech bubble, 後封保用照片, 後製確認照片, 真實視頻ROLL插投, ROLL/視頻, 視頻, video, 編輯圖片區, 圖片區, 4:5商比, 商比. Never render style/category words such as 社會案件, Justice Alert, Crime Scene Noir. "
+            "Do not render internal instruction labels, debug labels, card labels, image-box labels, source-marker labels, prompt syntax, or English labels. "
             "If spacing is tight, reduce font size, line spacing, or rearrange modules instead of deleting text. "
             "No fake Chinese glyphs, no random numbers, no random English letters."
         )
@@ -3033,10 +1666,7 @@ def build_image_prompt_translator(
 
     senior_news_cg_policy = build_senior_news_cg_designer_policy()
 
-    clean_render_policy = f"""
-{_style_render_ban_text()}
-{_forbidden_helper_text_ban()}
-
+    clean_render_policy = """
 CLEAN RENDER POLICY:
 Use the blueprint as layout guidance, not as visible text.
 Never render internal words such as section card, information card, image box, asset box, mandatory, invalid render, whitelist, compiler, source marker, debug label, or placeholder label.
@@ -3089,7 +1719,7 @@ Broadcast module translation:
 - If no explicit brush tag exists in the user script, brush strokes are forbidden.
 - Do not convert <文字>, 「quotes」, numbers, conflict words, emotional words, or body text into brush strokes.
 - Do not duplicate any body sentence into a separate brush/stamp/sticker module unless that exact line is explicitly tagged. Only promote a sentence once.
-- If the user provides 打卡地點 / 打卡LOGO / (打卡LOGO)地名, the location badge is MANDATORY: render ONLY the exact approved location text outside asset zones; never write 打卡LOGO, 打卡地點, 打卡, or any helper label.
+- (#打卡) means a location badge with a map-pin icon, placed outside asset zones.
 - <文字> means high-priority headline emphasis or impact typography; render the text exactly if it appears in the whitelist, but it is NOT a brush trigger.
 
 Explicit brush policy for this page:
@@ -3101,6 +1731,8 @@ Ticker/safe zone: {safe_zone_policy}
 
 ZERO ASSUMPTION / NO EXTRA UI:
 {zero_assumption_policy}
+
+Content mood reference only, do not invent facts or layout from this raw text summary: {content_hint}
 
 TEXT POLICY:
 {text_policy}
@@ -3121,21 +1753,16 @@ No horror, no distorted faces, no creepy anatomy, no surreal artifacts. Real pho
         "note": f"v20.6.6 會先做 Visual Token Compiler：標題/卡片/圖區分層，素材標記轉成 Asset Protection Zone，文字採白名單；筆刷只有明確標註才生成；Zero Assumption 禁止自行補跑馬/快訊/LIVE/台標；底圖配色模式：{background_mode}",
     }
 
-def build_cg_preview_html(script: str, frame_type: str, headline_mode: str, reporter_subtype_override: str = "", conclusion: Dict[str, str] | None = None, asset_aspect: str = "4:3 橫式素材框") -> str:
+def build_cg_preview_html(script: str, frame_type: str, headline_mode: str, reporter_subtype_override: str = "", conclusion: Dict[str, str] | None = None) -> str:
     """產生 16:9 CG 版面預覽。這不是成品圖，是用來檢查標題、圖區、模組是否會互相壓到。"""
     parsed = parse_user_script(script)
-    headline_preview_text = build_headline_display_text(script, headline_mode)
-    title = html.escape(headline_preview_text or "主標題").replace("\n", "<br>")
+    title = html.escape(parsed.title or "主標題")
     tags = parsed.image_tags or (["[圖-右主]"] if frame_type in ["標大框", "框訊・流程關係"] else [])
     safe_tags = [html.escape(tag) for tag in tags]
     mode_class = "one-line" if headline_mode == "一行大標題" else "two-line"
-    aspect_cfg = resolve_asset_aspect(asset_aspect)
 
     def img_box(label: str, cls: str = "") -> str:
-        zcfg = resolve_asset_aspect_for_tag(label, asset_aspect)
-        ratio_class = zcfg["css_class"]
-        ratio_label = zcfg["ratio"]
-        return f'<div class="img-zone {cls} {ratio_class}"><span>{label}<br>{ratio_label}｜後製真實圖片留白區<br>禁止文字 / icon / 筆刷 / 蓋章壓入</span></div>'
+        return f'<div class="img-zone {cls}"><span>{label}<br>後製真實圖片留白區<br>禁止文字 / icon / 筆刷 / 蓋章壓入</span></div>'
 
     def module_box(label: str, cls: str = "") -> str:
         return f'<div class="module {cls}">{label}</div>'
@@ -3266,14 +1893,6 @@ body {{ margin:0; background:#101010; font-family:'Noto Sans TC','Microsoft Jhen
 .img-zone.main {{ min-height:260px; }}
 .img-zone.person {{ min-height:128px; border-radius:12px; }}
 .img-zone.small {{ min-height:76px; }}
-.img-zone.ratio-auto {{ aspect-ratio:auto; }}
-.img-zone.ratio-auto.z0 {{ aspect-ratio:4 / 3; }}
-.img-zone.ratio-auto.z1 {{ aspect-ratio:4 / 5; max-width:68%; align-self:center; }}
-.img-zone.ratio-auto.z2 {{ aspect-ratio:16 / 9; }}
-.img-zone.ratio-43 {{ aspect-ratio:4 / 3; }}
-.img-zone.ratio-45 {{ aspect-ratio:4 / 5; max-width:68%; align-self:center; }}
-.img-zone.main.ratio-45 {{ min-height:310px; max-width:58%; }}
-.img-zone.person.ratio-45 {{ min-height:190px; max-width:58%; }}
 .module {{ background:rgba(255,230,80,.95); color:#111; font-weight:900; font-size:24px; line-height:1.2; padding:14px; border-radius:6px; border:3px solid rgba(0,0,0,.35); box-sizing:border-box; }}
 .module.stamp-warning {{ background:#cf2d2d; color:#fff; font-size:20px; }}
 .note {{ position:absolute; right:12px; bottom:8px; color:#ddd; font-size:12px; }}
@@ -3814,38 +2433,27 @@ with tab_prompt:
             if selected_template_ui == "框訊":
                 st.caption(f"框訊細類由系統判斷：{frame_type}")
 
-        st.markdown("### 🎨 風格來源 / 視覺變化")
-        style_source_mode = st.radio(
-            "風格來源（決定新聞類型 WHAT）",
-            ["自動判定題材風格庫（依新聞內容套用）", "手動選擇固定風格庫"],
+        style_layout_mode = st.radio(
+            "風格與排版判斷",
+            ["AI 自由決定風格、配色、字形與排版（不受固定風格庫限制）", "手動選擇固定風格庫"],
             index=0,
-            horizontal=True,
-            help="這層只決定新聞題材：社會案件、財經、科技、民生等。AI自由模式不會再覆蓋這個判斷。",
+            horizontal=False,
+            help="AI 自由決定：不侷限在下方固定風格庫，AI 可依內容自行決定配色、底圖、字形、色塊與排版；手動選擇：才使用固定風格庫。",
         )
-        if style_source_mode.startswith("自動判定"):
-            style_name = detected_style_name
-            st.success(f"內容風格已自動判定：{style_name}")
+        if style_layout_mode.startswith("AI 自由決定"):
+            style_name = AI_FREE_STYLE_NAME
+            layout_mode = "DYNAMIC"
+            ai_color = True
+            st.success("AI 自由模式：不套用固定風格庫，AI 會依新聞內容自行決定風格、配色、字形與排版。")
+            st.caption(f"系統參考題材判斷：{detected_style_name}；但不會被這個風格綁死。")
         else:
             style_name = st.selectbox(
-                "手動選擇內容風格",
+                "手動選擇風格",
                 list(STYLE_CONFIG.keys()),
                 index=list(STYLE_CONFIG.keys()).index(detected_style_name) if detected_style_name in STYLE_CONFIG else 0,
             )
-            st.info(f"內容風格手動指定：{style_name}")
-
-        visual_variation_mode = st.radio(
-            "視覺變化（決定畫法 HOW）",
-            ["固定風格庫", "AI自由變化（同一題材風格內變化底圖／構圖／材質）"],
-            index=1,
-            horizontal=False,
-            help="固定風格庫：穩定套用預設風格。AI自由變化：保留題材風格，但讓底圖、構圖、卡片造型、光影材質有更多變化。",
-        )
-        layout_mode = "DYNAMIC" if visual_variation_mode.startswith("AI自由") else "GRID"
-        ai_color = True
-        if visual_variation_mode.startswith("AI自由"):
-            st.success(f"AI自由變化啟用：在「{style_name}」風格框架內變化底圖與畫法，不會覆蓋自動判定風格。")
-        else:
-            st.caption(f"固定風格庫：穩定沿用「{style_name}」的預設視覺語彙。")
+            layout_mode = st.radio("排版模式", ["GRID", "DYNAMIC"], horizontal=True)
+            ai_color = st.toggle("AI 視覺主權：依新聞情緒配色", value=True)
 
         if frame_type == "記者說新聞":
             st.markdown("### 🧠 記者說新聞子類型")
@@ -3867,14 +2475,11 @@ with tab_prompt:
         if frame_type == "標大框":
             headline_mode = "兩行大標題"
             st.info("標大框：維持原本 MEGA LARGE 兩行大標設定。")
-        elif frame_type.startswith("框訊") or frame_type == "框訊":
-            headline_mode = "一行大標題"
-            st.info("框訊：已鎖定一行大標；不允許自動換成兩行或第二層副標。")
         else:
             headline_mode = st.radio(
                 "標題行數（手動選擇）",
                 ["一行大標題", "兩行大標題"],
-                index=0,
+                index=1,
                 horizontal=True,
                 help="不管選一行或兩行，標題都會鎖在版面最上方。",
             )
@@ -3886,14 +2491,6 @@ with tab_prompt:
         else:
             script_for_prompt = script
 
-        asset_aspect = st.radio(
-            "ROLL框 / 圖區版面尺寸",
-            ASSET_ASPECT_OPTIONS,
-            index=0,
-            horizontal=True,
-            help="全域預設比例；同一張版面若要混用，直接在圖區標籤寫 4:3 或 4:5，例如 [圖-左ROLL 4:3]、[圖-右人物 4:5]。標籤內的比例會優先於這裡的全域設定。",
-        )
-        st.caption("混合比例寫法：`[圖-左ROLL 4:3]`、`[圖-右人物 4:5]`、`(#定監視器畫面 4:3)`、`(LINE截圖 4:5)`；未標註的圖區才吃上面的全域選項。")
         icon_style = st.radio("ICON 質感", ["2D", "3D"], index=1, horizontal=True)
         if frame_type == "記者說新聞":
             use_safe_zone = True
@@ -3919,8 +2516,6 @@ with tab_prompt:
         ai_color=ai_color,
         notes=notes,
         reporter_subtype_override=reporter_subtype,
-        asset_aspect=asset_aspect,
-        visual_variation_mode=visual_variation_mode,
     )
 
     st.divider()
@@ -3959,7 +2554,6 @@ with tab_prompt:
             headline_mode,
             reporter_subtype_override=reporter_subtype,
             conclusion=conclusion,
-            asset_aspect=asset_aspect,
         ),
         height=620,
         scrolling=False,
@@ -3974,7 +2568,6 @@ with tab_prompt:
             director["conclusion_type"] = conclusion["type"]
             director["conclusion_sentence"] = conclusion["sentence"]
             director["conclusion_position"] = conclusion["position"]
-            director["asset_aspect"] = asset_aspect
             st.json(director)
 
     st.code(final_prompt, language="markdown")
