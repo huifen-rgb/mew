@@ -229,34 +229,68 @@ def _contains_any(script: str, words: List[str]) -> bool:
 
 
 ASSET_PROTECTION_KEYWORDS = [
-    "圖", "圖片", "定圖", "定", "開框", "ROLL", "roll", "Roll", "LINE截圖", "截圖",
+    "圖", "圖片", "定圖", "定", "開框", "ROLL", "roll", "Roll",
+    "LINE截圖", "截圖", "VCR", "vcr",
     "監視器", "畫面", "外觀照", "照片", "空拍", "地圖", "示意", "素材", "影像",
+    # 比例格式：(圖 4:3) / (圖 4:5) 等，用空格+數字比例標記
+    "圖 4:", "圖 16:", "圖 9:", "圖 1:",
 ]
 
 
 def is_asset_protection_tag(tag: str) -> bool:
     """
-    v20.5.2：判斷新聞台素材保護區。
+    v20.5.2 + v22.2：判斷新聞台素材保護區。
     這些不是要畫出來的文字，而是後製塞真實照片/影片/截圖的硬留白框。
-    例如：(#定圖)、(圖片)、(定國防部外觀照)、(#開框roll)、(LINE截圖)。
+
+    支援語法：
+      方括號圖區：[圖] / [圖-左] / [圖-右] / [圖-xxx]
+      比例圖區：  (圖 4:3) / (圖 4:5) / (圖 16:9) 等
+      圓括號圖區：(圖片) / (#開框roll) / (開框ROLL) / (LINE截圖) / (VCR)
+      定圖語法：  (#定xxx) / (定xxx圖) / (#開框xxx)
     """
     if not tag:
         return False
     t = tag.strip()
+
+    # [圖] / [圖-左] / [圖-右] / [圖-xxx]
     if t.startswith("[圖"):
         return True
+
+    # (#定xxx) / (定xxx圖) / (#開框xxx) / (＃開框xxx)
     if "#定" in t or "＃定" in t or "#開框" in t or "＃開框" in t:
         return True
+
+    # (圖 4:3) / (圖 4:5) / (圖 16:9) 等比例格式
+    if re.search(r'[（(]\s*圖\s+\d+:\d+\s*[）)]', t):
+        return True
+
+    # (VCR) / (vcr) — 電視台影片素材區語法
+    if re.search(r'[（(]\s*[Vv][Cc][Rr]\s*[）)]', t):
+        return True
+
+    # (開框ROLL) / (開框roll) — 不帶 # 的開框語法
+    if re.search(r'[（(]\s*開框\s*[Rr][Oo][Ll][Ll]\s*[）)]', t):
+        return True
+
     if any(k in t for k in ASSET_PROTECTION_KEYWORDS):
-        # 避免把「圖利」這類純文字誤判成圖區。
-        if "圖利" in t and not any(x in t for x in ["定", "圖", "圖片", "ROLL", "截圖", "畫面"]):
+        # 避免把「圖利」這類純文字誤判成圖區
+        if "圖利" in t and not any(x in t for x in ["定", "圖片", "ROLL", "截圖", "畫面", "VCR"]):
             return False
         return True
     return False
 
 
 def _count_image_intents(script: str) -> int:
-    markers = ["[圖", "(#定", "(＃定", "(定", "(圖片", "圖片", "截圖", "ROLL", "roll", "定圖", "外觀照", "開框"]
+    markers = [
+        "[圖",                   # [圖] / [圖-左] / [圖-右] / [圖-xxx]
+        "(#定", "(＃定", "(定",  # (#定xxx) / (定xxx圖)
+        "(圖片", "圖片",          # (圖片)
+        "截圖",                  # LINE截圖 / 截圖
+        "ROLL", "roll",          # (#開框roll) / (開框ROLL) / ROLL
+        "VCR", "vcr",            # (VCR)
+        "定圖", "外觀照", "開框", # 其他慣用語法
+        "(圖 ",                  # (圖 4:3) / (圖 4:5) 比例格式
+    ]
     return sum(script.count(marker) for marker in markers)
 
 
@@ -275,7 +309,14 @@ def is_reporter_news(script: str) -> bool:
 
 
 def detect_reporter_subtype(script: str) -> str:
-    if _contains_any(script, ["表格", "免稅門檻", "扣除額", "年所得", "以下請出成表格"]):
+    # 表格意圖關鍵字：使用者明確要求表格或對比結構，優先權最高
+    TABLE_TRIGGERS = [
+        "表格", "免稅門檻", "扣除額", "年所得",
+        "以下請出成表格", "以下請以表格", "請出成表格", "請以表格",
+        "對比表", "比較表", "左右對比", "左右欄",
+        " vs. ", "vs.", "VS.", "V.S", "V.S.",
+    ]
+    if _contains_any(script, TABLE_TRIGGERS):
         return "表格數據型"
     if script.count("●") >= 4 or _contains_any(script, ["以下●請分別出一框", "六大新制"]):
         return "卡片條列型"
@@ -304,28 +345,44 @@ def auto_detect_tone(script: str, frame_type: str) -> str:
 
 
 def has_explicit_brush_tag(script: str) -> bool:
-    """v20.6.3 CORE LAW：只有使用者明確標註筆刷，才允許生成筆刷效果。"""
+    """v20.6.3 CORE LAW：只有使用者明確標註筆刷，才允許生成筆刷效果。
+
+    支援語法：
+      #筆刷 / ＃筆刷        — 行首 hash 寫法
+      筆刷效果              — 中文全名寫法
+      (筆刷) / (#筆刷xxx)   — 圓括號寫法
+      [筆刷xxx]             — 方括號寫法
+      ---筆刷               — 分隔線接筆刷
+    """
     if not script:
         return False
     patterns = [
         r"\(#?筆刷[^)]*\)",
         r"\[筆刷[^\]]*\]",
         r"[#＃]筆刷",
-        r"---+\s*筆刷",
+        r"-{2,}\s*筆刷",
         r"筆刷效果",
     ]
     return any(re.search(p, script) for p in patterns)
 
 
 def has_explicit_stamp_tag(script: str) -> bool:
-    """只有明確標註蓋章，才允許生成蓋章效果。"""
+    """只有明確標註蓋章，才允許生成蓋章效果。
+
+    支援語法：
+      #蓋章 / ＃蓋章        — 行首 hash 寫法
+      蓋章效果              — 中文全名寫法
+      (蓋章) / (#蓋章xxx)   — 圓括號寫法
+      [蓋章xxx]             — 方括號寫法
+      ---蓋章 / --------蓋章 — 分隔線接蓋章
+    """
     if not script:
         return False
     patterns = [
         r"\(#?蓋章[^)]*\)",
         r"\[蓋章[^\]]*\]",
         r"[#＃]蓋章",
-        r"---+\s*蓋章",
+        r"-{2,}\s*蓋章",
         r"蓋章效果",
     ]
     return any(re.search(p, script) for p in patterns)
@@ -617,6 +674,59 @@ def get_api_key() -> str:
     env_key = os.environ.get("GEMINI_API_KEY", "").strip()
     input_key = st.session_state.get("manual_api_key", "").strip()
     return input_key or env_key
+
+
+# =========================================================
+# 字數審查模組（整合自電視鏡面字數審查工具）
+# =========================================================
+FRAME_WORD_LIMITS: Dict[str, int] = {
+    "框訊":     180,
+    "標大框":   120,
+    "記者說新聞": 180,
+}
+
+# 框訊細類也對應到 180
+for _k in ["框訊・多圖對比", "框訊・對打時間軸", "框訊・數據分析", "框訊・流程關係"]:
+    FRAME_WORD_LIMITS[_k] = 180
+
+
+def count_clean_chars(text: str) -> int:
+    """扣除半形／全形括號、引號、角括號等格式符號後的純文字字數（與前端 JS 邏輯對齊）。"""
+    cleaned = re.sub(r'[()"\<\>\uff08\uff09\u300c\u300d\u300e\u300f\u3008\u3009\u300a\u300b]', '', text)
+    return len(cleaned)
+
+
+def simplify_script_with_gemini(text: str, max_words: int, api_key: str, model_name: str) -> Tuple[Optional[str], Optional[str]]:
+    """
+    用 Gemini 精簡超標文案；只縮純文字，不動格式符號與架構。
+    回傳 (精簡後文字, 錯誤訊息)。
+    """
+    if not configure_gemini(api_key):
+        return None, "API 金鑰未設定"
+
+    simplify_prompt = f"""你是一位精通台灣電視新聞鏡面的排版編輯。
+使用者輸入的是已排好格式、帶有電視框板標記（括號 `(…)`、引號 `「」`/`""`、角括號 `<>` 等）的新聞文案。
+目前字數超標，請在「完全不變動原本格式架構」的前提下，刪除贅字、精簡文案。
+
+【鋼鐵紀律：格式原封不動】
+1. 嚴禁新增自創標籤，絕對不輸出 【主大標】、【字卡】、摘要：等字眼。
+2. 完美複製原始結構：原本幾行、括號 `(…)` 與引號位置在哪裡，精簡後必須原封不動留在一模一樣的位置。
+3. 字數計算規則：改寫後的文案，在「扣除所有括號 ()（）、引號 「」""、角括號 <>」本身之後，其餘純文字的總字數嚴格不得超過 {max_words} 個字。
+4. 刪減心法：無情刪除冗贅詞彙；核心事實（人、時、事、地、關鍵數字）必須完全保留。
+5. 請直接輸出精簡後的原格式文案，嚴禁包含任何額外解釋、備註或引號。
+
+請依照上述紀律，精簡以下文案，維持完全相同的格式，且扣除符號後的字數必須在上限內：
+{text}"""
+
+    try:
+        model = genai.GenerativeModel(model_name=model_name)
+        response = model.generate_content(
+            simplify_prompt,
+            generation_config=genai.types.GenerationConfig(temperature=0.05),
+        )
+        return response.text.strip(), None
+    except Exception as e:
+        return None, str(e)
 
 
 def configure_gemini(api_key: str) -> bool:
@@ -961,25 +1071,39 @@ def build_symbol_matrix_v17() -> str:
 - <尖括號> => Highest-priority keyword emphasis. Remove angle brackets in final artwork.
 - 【方頭括號】 => Bold color-block subheading. Remove brackets in final artwork.
 - (圓括號內容) => Treat as layout instruction or preserved factual parenthesis depending on context.
-- [圖] / [圖-xxx] / (#定xxx) / (定xxx圖) / (LINE截圖) => HARD EMPTY IMAGE ZONE.
+
+[IMAGE ZONE SYNTAX — ALL VARIANTS = HARD EMPTY IMAGE ZONE]
+Square-bracket zones:
+  [圖] / [圖-左] / [圖-右] / [圖-xxx] (any suffix)
+Aspect-ratio zones:
+  (圖 4:3) / (圖 4:5) / (圖 16:9) (parenthesis + 圖 + ratio)
+Parenthesis zones:
+  (圖片) / (#開框roll) / (開框ROLL) / (LINE截圖) / (VCR)
+Slug zones:
+  (#定xxx) / (定xxx圖) / (#開框xxx)
 
 [HARD EMPTY IMAGE ZONE RULE - ABSOLUTE]
 1. Every image placeholder creates a protected bounding box.
 2. The protected box must remain 100% EMPTY for post-production real photos.
 3. NO text, NO icons, NO UI cards, NO arrows, NO shadows, NO decorations may overlap the image zone.
 4. NO stamp effects, brush strokes, arrows, speech bubbles, labels, shadows, or decorative frames may overlap the image zone.
-5. Stamp effects such as (蓋章字), --------蓋章, or "6天完工" stamps must render OUTSIDE image zones only.
+5. Stamp effects must render OUTSIDE image zones only.
 6. Maintain at least 20px clean safety buffer around every image zone.
 7. DELETE all placeholder text, slug text, and labels from final pixels.
 8. If layout conflict occurs, shrink/reflow text modules; NEVER invade image zones.
 9. Image zones have higher priority than text completeness and all visual effects.
 
+[EFFECT TAG SYNTAX]
+Brush effect — triggered ONLY by explicit tags; never applied automatically:
+  #筆刷 / ＃筆刷 / 筆刷效果 / (筆刷) / (#筆刷xxx) / ---筆刷
+Stamp effect — triggered ONLY by explicit tags; never applied automatically:
+  #蓋章 / ＃蓋章 / 蓋章效果 / (蓋章) / (#蓋章xxx) / ---蓋章 / --------蓋章
+Stamp must always render OUTSIDE all image zones and ticker safe zone.
+
 [MODULE TAGS]
 - (色塊) / (方框) => Render as news information card. Delete instruction text.
 - (對話框) / (拉對話框) / (+對話框) => Render as speech bubble. Delete instruction text.
 - (數據框) => Render as layered data block. Delete instruction text.
-- #筆刷 / ---筆刷 => Render as brush-stroke emphasis. Delete literal instruction text.
-- (蓋章字) / --------蓋章 => Render as distressed stamp overlay OUTSIDE protected image zones only. Delete instruction text.
 - (icon假人大頭) / (數個假人icon) => Render as simple person icon group. Delete instruction text.
 """.strip()
 
@@ -995,6 +1119,14 @@ def build_frame_rules(frame_type: str) -> str:
 - One-line headline: keep it in the top headline band, centered or left-weighted, never moved to middle.
 - Two-line headline: stack both lines in the top headline band, never placed in the center body area.
 - Do not leave accidental blank spaces, except protected image zones and ticker safe zone.
+
+[CONFLICT RESOLUTION PRIORITY]
+When layout rules conflict, resolve strictly in this order — higher number always loses to lower:
+1. Asset protection zones (image / roll placeholders) — absolute, never invaded under any circumstance.
+2. Ticker safe zone — always kept clean, no exceptions.
+3. Explicit content structure in the script (e.g. table request, comparison columns, bullet list) — overrides frame subtype suggestion.
+4. Frame type layout rules — apply when no content-structure conflict exists.
+5. Aesthetic preference — lowest priority; never override any rule above.
 """
 
     rules = {
@@ -1066,6 +1198,50 @@ Detected Modules:
 """.strip()
 
 
+def sanitize_script_for_image_model(script: str) -> str:
+    """
+    把編輯語法轉成圖像模型能直接執行的乾淨指令。
+    在送進 [CONTENT SCRIPT] 之前呼叫，消除模型「把指令當文字印出來」的歧義。
+
+    處理項目：
+    1. 【標】【大標】【小標】等欄位前綴 → 移除（不是要印上畫面的文字）
+    2. 版型控制用的圓括號指令 → 移除（例：以下請以表格呈現、LOGO）
+    3. [照菜單做便當] 這類方括號文字標籤 → 保留內文、移除方括號
+       （[圖-xxx] 等圖區保護標籤不動）
+    4. 雙引號符號 → 移除（保留文字內容，避免模型印出引號符號）
+    5. vs. / V.S → 統一格式
+    """
+    text = script
+
+    # 1. 欄位前綴字
+    text = re.sub(r'【標[題]?】|【大標[題]?】|【小標[題]?】', '', text)
+
+    # 2. 版型控制圓括號指令（保留位置，不印文字）
+    # 注意：圖區語法 (圖片)/(VCR)/(開框ROLL)/(LINE截圖) 由 is_asset_protection_tag 另外處理，這裡不移除
+    text = re.sub(
+        r'\([^\)]*(?:以下請|請以|呈現|表格|色塊|對話框|數據框|筆刷|蓋章|icon|假人|LOGO|logo|Logo)[^\)]*\)',
+        '',
+        text,
+    )
+
+    # 3. 方括號文字標籤：圖區保留，純文字標籤只留內文
+    def _replace_square(m: re.Match) -> str:
+        inner = m.group(1)
+        if is_asset_protection_tag(f"[{inner}]"):
+            return m.group(0)   # 圖區保護標籤原封不動
+        return inner             # 純文字標籤剝掉括號，只留內文
+
+    text = re.sub(r"\[([^\]]+)\]", _replace_square, text)
+
+    # 4. 移除雙引號符號（保留內文）
+    text = re.sub(r'[""「」“”「」]', '', text)
+
+    # 5. vs. 統一格式
+    text = re.sub(r'\s*[Vv][Ss]\.?\s*', ' vs. ', text)
+
+    return text.strip()
+
+
 def build_final_prompt_v18(
     script: str,
     frame_type: str,
@@ -1084,19 +1260,20 @@ def build_final_prompt_v18(
     safe_zone_text = (
         """
 [TICKER SAFETY - LOCKED FOR 記者說新聞]
-Right-bottom hardware ticker safe zone: X > 1332 and Y > 990.
-This 588x90 zone must contain background texture only.
-No text, no icon, no UI cards, no stamps, no brush effects, no image zones.
-Blend naturally with background.
-Do not leave unnecessary empty space above it; fill content downward until Y=990 when possible.
+The bottom-right corner of the canvas — approximately the rightmost 30% of width and bottommost 8% of height — is a HARDWARE TICKER SAFE ZONE.
+Treat it as a physical hardware overlay area that always sits on top of the CG.
+This region must contain clean background texture only.
+Absolutely forbidden inside this region: text, icons, UI cards, stamps, brush effects, image zones, shadows, decorations.
+Blend the background naturally into this corner; do not leave a visible hard edge.
+Fill all content downward as close to this boundary as possible without entering it.
 """.strip()
         if frame_type == "記者說新聞"
         else """
 [TICKER SAFETY]
-Right-bottom hardware ticker safe zone: X > 1332 and Y > 990.
-This 588x90 zone must contain background texture only.
-No text, no icon, no UI cards. Blend naturally with background.
-Do not leave unnecessary empty space above it; fill content downward until Y=990 when possible.
+The bottom-right corner of the canvas — approximately the rightmost 30% of width and bottommost 8% of height — is a hardware ticker safe zone.
+This region must contain clean background texture only.
+No text, no icons, no UI cards inside this corner. Blend naturally with background.
+Fill content downward as close to this boundary as possible without entering it.
 """.strip()
         if (use_safe_zone or frame_type == "記者說新聞")
         else "[TICKER SAFETY]" + NL + "Full canvas access. No ticker exclusion zone required."
@@ -1238,8 +1415,9 @@ Never prioritize aesthetics over protected zone integrity.
 - If any image zone and text compete for space, preserve both by reducing spacing, reducing font size, or rearranging modules.
 - Final result must be a professional TV news CG, not a poster, not a webpage.
 
-[CONTENT SCRIPT]
-{script.strip()}
+[CONTENT SCRIPT - CLEANED FOR RENDERING]
+The following text has been pre-processed. All editor markup (【】, [], ()) has been converted to plain render-ready text. Render exactly what you see; do not re-introduce bracket syntax, labels, or formatting tags.
+{sanitize_script_for_image_model(script)}
 
 [DIRECTOR NOTES]
 {notes.strip()}
@@ -2523,6 +2701,10 @@ with tab_prompt:
 
     with c1:
         default_script = ""
+        # 精簡結果待寫入時，先搬移到正式 key 再清除暫存，讓 widget 在本次 run 吃到新值。
+        # （不能在 widget 實例化後直接寫同一個 key，會觸發 StreamlitAPIException）
+        if st.session_state.get("_pending_simplified"):
+            st.session_state["manual_script"] = st.session_state.pop("_pending_simplified")
         script = st.text_area(
             "框訊文字稿（預設空白，不會自帶範例文字）",
             key="manual_script",
@@ -2533,9 +2715,65 @@ with tab_prompt:
         if not script.strip():
             st.info("目前文字稿是空白。請貼上內容後再產生最終指令。")
 
+        # ── 字數審查模組 ────────────────────────────────────────
+        st.markdown("---")
+        st.markdown("#### 📏 鏡面字數審查（格式符號自動扣除）")
+
+        # 決定對應框型的字數上限（此時 frame_type 尚未算出，先用 UI 選單值估算）
+        _audit_ui_frame = st.session_state.get("manual_script_frame_ui", "框訊")
+        _audit_limit = FRAME_WORD_LIMITS.get(_audit_ui_frame, 180)
+
+        _clean_len = count_clean_chars(script)
+        _over = _clean_len - _audit_limit
+
+        _col_cnt, _col_bar = st.columns([2, 3])
+        with _col_cnt:
+            if _over > 0:
+                st.error(f"⚠️ 超標 **{_over}** 字｜目前 {_clean_len} 字 / 上限 {_audit_limit} 字")
+            elif _clean_len == 0:
+                st.caption(f"目前 0 字 / 上限 {_audit_limit} 字（不含格式符號）")
+            else:
+                st.success(f"✅ 安全合格｜目前 **{_clean_len}** 字 / 上限 {_audit_limit} 字")
+        with _col_bar:
+            _pct = min(_clean_len / max(_audit_limit, 1), 1.0)
+            _bar_color = "#ef4444" if _over > 0 else "#10b981"
+            st.markdown(
+                f"""<div style="background:#e2e8f0;border-radius:4px;height:10px;margin-top:12px;">
+                <div style="width:{_pct*100:.1f}%;background:{_bar_color};height:10px;border-radius:4px;transition:width .3s;"></div>
+                </div>""",
+                unsafe_allow_html=True,
+            )
+
+        st.caption("系統已自動扣除 ()（）、「」『』、<>《》 等格式符號，不計入總字數。")
+
+        if _over > 0:
+            if st.button("✨ AI 自動精簡文案（Gemini）", key="simplify_btn_director", type="primary"):
+                _api_key = get_api_key()
+                if not _api_key:
+                    st.error("❌ 找不到 Gemini API Key，請於側邊欄輸入。")
+                else:
+                    with st.spinner(f"Gemini 正在精簡文案，目標上限 {_audit_limit} 字…"):
+                        _simplified, _err = simplify_script_with_gemini(
+                            script, _audit_limit, _api_key, CURRENT_MODEL
+                        )
+                    if _simplified:
+                        # Streamlit 不允許在 widget 實例化後直接寫同一個 key。
+                        # 做法：存入暫存 key → st.rerun() → 下次 run 開頭搬入 manual_script → widget 正常讀到新值。
+                        _new_len = count_clean_chars(_simplified)
+                        st.session_state["_pending_simplified"] = _simplified
+                        if _new_len <= _audit_limit:
+                            st.success(f"✅ 精簡成功！精簡後 {_new_len} 字，即將自動填回文字稿…")
+                        else:
+                            st.warning(f"⚠️ 精簡後仍有 {_new_len} 字，建議再執行一次或手動調整。")
+                        st.rerun()
+                    else:
+                        st.error(f"精簡失敗：{_err}")
+        # ── 字數審查模組結束 ─────────────────────────────────────
+
     with c2:
         st.markdown("### 🛠️ 編譯設定")
         selected_template_ui = st.selectbox("模型模板選單", UI_FRAME_OPTIONS, index=UI_FRAME_OPTIONS.index(default_frame_ui))
+        st.session_state["manual_script_frame_ui"] = selected_template_ui
         auto_director = st.toggle("🎬 啟動自動導演判斷", value=True)
         auto_patch = st.toggle("自動補必要 [圖] 區（預設關閉，避免自動生成你沒給的文字）", value=False)
         if script.strip():
@@ -2609,13 +2847,19 @@ with tab_prompt:
             reporter_subtype = "N/A"
 
         if frame_type == "標大框":
+            # 標大框：強制兩行大標
             headline_mode = "兩行大標題"
-            st.info("標大框：維持原本 MEGA LARGE 兩行大標設定。")
+            st.info("標大框：自動鎖定兩行大標題。")
+        elif frame_type.startswith("框訊"):
+            # 框訊（所有細類）：強制一行大標
+            headline_mode = "一行大標題"
+            st.info("框訊：自動鎖定一行大標題。")
         else:
+            # 記者說新聞：手動選擇
             headline_mode = st.radio(
-                "標題行數（手動選擇）",
+                "標題行數",
                 ["一行大標題", "兩行大標題"],
-                index=1,
+                index=0,
                 horizontal=True,
                 help="不管選一行或兩行，標題都會鎖在版面最上方。",
             )
