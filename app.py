@@ -961,7 +961,7 @@ def parse_user_script(script: str) -> ParsedInput:
 
     title = ""
 
-    for key in ["大標:", "大標=", "標題:", "標題=", "標:", "標="]:
+    for key in ["大標：", "大標:", "大標=", "標題：", "標題:", "標題=", "標：", "標:", "標="]:
 
         if key in script:
 
@@ -1028,7 +1028,9 @@ def parse_user_script(script: str) -> ParsedInput:
         "蓋章",
         "假人",
         "icon",
+        "ICON",
         "筆刷",
+        "打卡",
         "關係",
         "群組",
         "頭+字",
@@ -1105,6 +1107,11 @@ Stamp must always render OUTSIDE all image zones and ticker safe zone.
 - (對話框) / (拉對話框) / (+對話框) => Render as speech bubble. Delete instruction text.
 - (數據框) => Render as layered data block. Delete instruction text.
 - (icon假人大頭) / (數個假人icon) => Render as simple person icon group. Delete instruction text.
+- (#打卡) => Render a map location pin icon. Place it overlaid on the TOP EDGE of the nearest ROLL/image zone. Pin icon sits on the border; text sits outside the zone interior.
+- (#打卡 地名) => Render a map location pin icon + place name text. Overlay on top edge of ROLL zone. Text must remain outside the ROLL interior.
+- (地點字小)地名 => Same as (#打卡 地名) but text is smaller. Overlay on top edge of ROLL zone. Text outside ROLL interior.
+- ALL 打卡 variants: pin badge sticks to the top-left or top-center of the ROLL frame border; never floats freely in empty space; never overlaps interior of the ROLL zone.
+- (#ICON) / 文字(#ICON) / (#警方ICON) => Render a contextually appropriate icon next to the preceding text. Delete the (#ICON) tag itself.
 """.strip()
 
 
@@ -1116,6 +1123,7 @@ def build_frame_rules(frame_type: str) -> str:
 - Output must look like polished professional TV news CG.
 - Text hierarchy must be strong and readable on broadcast.
 - TOP HEADLINE LOCK: headline must always be placed at the very top edge area of the canvas, whether it is one line or two lines.
+- HEADLINE FULL-WIDTH EXCLUSIVE ZONE: the headline band always spans the full 1920px width. No image zone, ROLL frame, card, icon, or any object may appear to the side of or at the same height as the headline. All non-headline content must start below the headline band.
 - One-line headline: keep it in the top headline band, centered or left-weighted, never moved to middle.
 - Two-line headline: stack both lines in the top headline band, never placed in the center body area.
 - Do not leave accidental blank spaces, except protected image zones and ticker safe zone.
@@ -1142,8 +1150,9 @@ When layout rules conflict, resolve strictly in this order — higher number alw
 """,
         "標大框": """
 [FRAME: 標大框]
-- Top 30-40%: MEGA headline, forced 2-line or 3-line if stronger.
-- Lower area: main image zone plus information modules.
+- Top 30-40%: MEGA headline band — full canvas width, exclusive. No image, no card, no icon anywhere beside or at the same height as the headline.
+- ALL image zones, ROLL frames, cards, and information modules must be placed STRICTLY BELOW the headline band.
+- Lower area: main image zone (large, left or center) plus information modules (right or bottom).
 - Main visual zone must be large and untouched.
 - Suitable for conflict or breaking-style news summaries.
 """,
@@ -1203,44 +1212,101 @@ def sanitize_script_for_image_model(script: str) -> str:
     把編輯語法轉成圖像模型能直接執行的乾淨指令。
     在送進 [CONTENT SCRIPT] 之前呼叫，消除模型「把指令當文字印出來」的歧義。
 
-    處理項目：
-    1. 【標】【大標】【小標】等欄位前綴 → 移除（不是要印上畫面的文字）
-    2. 版型控制用的圓括號指令 → 移除（例：以下請以表格呈現、LOGO）
-    3. [照菜單做便當] 這類方括號文字標籤 → 保留內文、移除方括號
-       （[圖-xxx] 等圖區保護標籤不動）
-    4. 雙引號符號 → 移除（保留文字內容，避免模型印出引號符號）
-    5. vs. / V.S → 統一格式
+    處理優先序（高 → 低）：
+    1. 欄位前綴字（【標】【大標】【小標】）→ 移除
+    2. 圖區保護語法（#開框roll / #定圖 / VCR 等）→ 原封不動
+    3. 效果標籤（#筆刷 / #蓋章）→ 原封不動，圖像模型需要看到
+    4. (#打卡) 地點 icon → 轉成 "location pin icon [地名]" 語意描述
+    5. (#ICON) / 文字(#ICON) 行內 icon → 轉成 "[文字] icon" 語意描述
+    6. 版型控制圓括號（表格 / LOGO 等）→ 移除
+    7. 方括號文字標籤 → 保留內文、移除括號（圖區標籤不動）
+    8. 雙引號符號 → 移除（保留內文）
+    9. vs. / V.S → 統一格式
     """
     text = script
 
     # 1. 欄位前綴字
     text = re.sub(r'【標[題]?】|【大標[題]?】|【小標[題]?】', '', text)
 
-    # 2. 版型控制圓括號指令（保留位置，不印文字）
-    # 注意：圖區語法 (圖片)/(VCR)/(開框ROLL)/(LINE截圖) 由 is_asset_protection_tag 另外處理，這裡不移除
+    # 2–6. 圓括號逐一判斷，按優先序處理
+
+    # 預處理 A：「文字(#ICON)」行內格式 → 「文字 icon」
+    # 必須在通用括號處理前做，否則括號內的 inner 只有 #ICON，拿不到前面的「警方」
     text = re.sub(
-        r'\([^\)]*(?:以下請|請以|呈現|表格|色塊|對話框|數據框|筆刷|蓋章|icon|假人|LOGO|logo|Logo)[^\)]*\)',
-        '',
+        r'([一-鿿\w]+)\s*\([#＃]?(?:ICON|icon)\)',
+        lambda m: m.group(1) + ' icon',
         text,
     )
 
-    # 3. 方括號文字標籤：圖區保留，純文字標籤只留內文
+    # 預處理 B：「(地點字小)地名」語法 → 「location pin icon [地名] (small text)」
+    # 格式：圓括號內含「字小」字型指示，緊接在後面的中文是地名
+    # 例：(地點字小)花蓮  /  (地點字小) 台北車站
+    # → 轉成語意描述，標記 ROLL 框貼邊渲染指示
+    def _replace_location_small(m: re.Match) -> str:
+        loc = m.group(1).strip()
+        return f"location pin icon {loc} (small text, overlay on top edge of ROLL zone)"
+
+    text = re.sub(
+        r'\([^)]*(?:地點字小|地點.*字小|字小.*地點)[^)]*\)\s*([\u4e00-\u9fff]{1,20})',
+        _replace_location_small,
+        text,
+    )
+
+    def _replace_paren(m: re.Match) -> str:
+        raw = m.group(0)            # 含括號完整字串，例如 (#開框roll)
+        inner = m.group(1).strip()  # 去掉括號的內容
+
+        # 2. 圖區保護語法 → 原封不動
+        if is_asset_protection_tag(raw):
+            return raw
+
+        # 3. 效果標籤（筆刷 / 蓋章）→ 原封不動
+        if re.search(r'[#＃]?(?:筆刷|蓋章)', inner):
+            return raw
+
+        # 4. (#打卡) / (#打卡 地名) → location pin icon，貼在 ROLL 框上緣
+        if re.search(r'[#＃]?打卡', inner):
+            loc = re.sub(r'[#＃]?打卡\s*', '', inner).strip()
+            loc_str = (' ' + loc) if loc else ''
+            return f"location pin icon{loc_str} (overlay on top edge of ROLL zone, outside ROLL interior)"
+
+        # 5. (#ICON) / (#警方ICON) / (警方#ICON) → "[前綴] icon"
+        if re.search(r'[#＃]?ICON', inner, flags=re.IGNORECASE):
+            # 移除 # 符號和 ICON 關鍵字，保留前綴文字
+            prefix = re.sub(r'[#＃]', '', inner)          # 先移除所有 #
+            prefix = re.sub(r'ICON', '', prefix, flags=re.IGNORECASE).strip()
+            return f"{prefix} icon".strip() if prefix else "icon"
+
+        # 6. 版型控制指令 → 移除
+        LAYOUT_KW = [
+            "以下請", "請以", "呈現", "表格",
+            "色塊", "對話框", "數據框", "假人",
+            "LOGO", "logo", "Logo",
+        ]
+        if any(kw in inner for kw in LAYOUT_KW):
+            return ""
+
+        # 其他圓括號 → 原封不動（保留事實性括號）
+        return raw
+
+    text = re.sub(r'\(([^)]*)\)', _replace_paren, text)
+
+    # 7. 方括號文字標籤：圖區保留，純文字標籤只留內文
     def _replace_square(m: re.Match) -> str:
-        inner = m.group(1)
-        if is_asset_protection_tag(f"[{inner}]"):
-            return m.group(0)   # 圖區保護標籤原封不動
-        return inner             # 純文字標籤剝掉括號，只留內文
+        inner_s = m.group(1)
+        if is_asset_protection_tag(f"[{inner_s}]"):
+            return m.group(0)
+        return inner_s
 
-    text = re.sub(r"\[([^\]]+)\]", _replace_square, text)
+    text = re.sub(r'\[([^\]]+)\]', _replace_square, text)
 
-    # 4. 移除雙引號符號（保留內文）
-    text = re.sub(r'[""「」“”「」]', '', text)
+    # 8. 移除雙引號符號（保留內文）
+    text = re.sub(r'["“”「」『』]', '', text)
 
-    # 5. vs. 統一格式
+    # 9. vs. 統一格式
     text = re.sub(r'\s*[Vv][Ss]\.?\s*', ' vs. ', text)
 
     return text.strip()
-
 
 def build_final_prompt_v18(
     script: str,
@@ -1308,36 +1374,16 @@ COLOR STRATEGY: {color_logic}
 
 [HEADLINE GROUP LOCK v22.16]
 Mode: {headline_mode}
+Headline text: {_clean_visual_text(parsed.title)}
 
-HEADLINE TEXT:
-{parsed.title}
-
-TOP HEADLINE LOCK:
-The headline must always sit at the very top.
-
-If headline contains multiple lines:
-
-ALL lines must stay inside the TOP HEADLINE BAND.
-
-Never move line 2 or line 3 into body area.
-
-Never merge with cards.
-
-Never compress to one line.
-
-Never delete line 2.
-
-Preserve line breaks exactly.
-
-Headline must dominate the design.
-
-Use huge broadcast-style typography.
-
-Strong outline.
-
-Shadow.
-
-Layered emphasis.
+Rules:
+- The headline must always sit at the very top of the canvas.
+- The headline band spans the FULL WIDTH of the canvas (1920px). No object of any kind — image zone, ROLL frame, card, icon, badge, or decoration — may appear beside or at the same vertical level as the headline. The headline rows are an exclusive zone.
+- All lines of a multi-line headline must stay inside the TOP HEADLINE BAND; never move any line into the body area.
+- Never merge headline with cards, compress to one line, or delete any line.
+- Preserve line breaks exactly as written.
+- Headline must dominate the design: use huge broadcast-style Chinese typography with thick strokes, strong outline, shadow, and layered emphasis.
+- IMAGE ZONES AND ALL OTHER CONTENT START STRICTLY BELOW THE HEADLINE BAND. Zero overlap, zero side-by-side placement.
 
 [LAYOUT]
 Layout mode: {layout_mode}
@@ -1348,45 +1394,14 @@ Layout mode: {layout_mode}
 {build_visual_token_compiler_block(script, frame_type, headline_mode)}
 
 [PROTECTED PHOTO ZONE｜ABSOLUTE]
+Detected image / roll zones are HARD EMPTY SAFE ZONES reserved for manual post-production.
 
-Detected image / roll zones are HARD EMPTY SAFE ZONES.
-
-These zones are reserved for manual post-production.
-
-Inside these zones, absolutely forbidden:
-
-- text
-- icons
-- badges
-- speech bubbles
-- brush effects
-- stamp effects
-- labels
-- callouts
-- arrows
-- decorations
-- captions
-- highlight strips
-- glow effects
-- shadow overlays
-- UI cards
-- borders crossing into the zone
-
-No visual object may overlap.
-
-No partial overlap.
-
-No edge touching.
-
-Keep at least 20px safety margin.
-
-Protected zones must stay 100% clean blank placeholders.
-
-If a bubble, brush, label, or badge is near a protected zone:
-
-AUTO MOVE it outside the protected zone.
-
-Never prioritize aesthetics over protected zone integrity.
+Rules:
+- Absolutely forbidden inside any image zone: text, icons, badges, speech bubbles, brush effects, stamp effects, labels, callouts, arrows, decorations, captions, highlight strips, glow effects, shadow overlays, UI cards, or borders crossing into the zone.
+- No visual object may overlap, partially overlap, or edge-touch a protected zone.
+- Keep at least 20px safety margin around every protected zone.
+- Protected zones must stay 100% clean blank placeholders.
+- If any bubble, brush, label, or badge is near a protected zone, AUTO MOVE it outside. Never prioritize aesthetics over protected zone integrity.
 {build_layout_diagnostics(parsed, frame_type)}
 
 [v19.6 DIRECTOR DECISION]
@@ -1601,8 +1616,9 @@ def _clean_visual_text(text: str) -> str:
         t = t.replace(tag, " ")
     t = re.sub(r"\([^)]*(?:色塊|方框|對話框|數據框|筆刷|蓋章|icon|假人|打卡)[^)]*\)", " ", t)
     t = re.sub(r"^[\-—=]{2,}$", " ", t)
-    t = t.replace("標題:", "").replace("標題=", "").replace("大標:", "").replace("大標=", "")
-    t = t.replace("標:", "").replace("標=", "")
+    t = t.replace("標題：", "").replace("標題:", "").replace("標題=", "")
+    t = t.replace("大標：", "").replace("大標:", "").replace("大標=", "")
+    t = t.replace("標：", "").replace("標:", "").replace("標=", "")
     t = t.replace("<", "").replace(">", "")
     t = t.replace("【", "").replace("】", "")
     t = t.replace("[", "").replace("]", "")
@@ -1758,7 +1774,9 @@ Do not render any instruction labels, module labels, placeholder labels, debug l
 Headline treatment:
 - Use {headline_mode}.
 - Exact headline text: {title or '未提供'}
-- Place the headline at the top only.
+- Place the headline at the very top of the canvas, spanning the FULL WIDTH (1920px).
+- EXCLUSIVE ZONE: no image frame, ROLL box, card, icon, badge, or any other element may appear beside the headline or at the same vertical level. The top band belongs entirely to the headline.
+- All other content — image zones, text cards, icons — must start strictly below the headline band.
 - Make it visually dominant, like an on-air Taiwanese TV news mega headline.
 - Use layered Chinese broadcast typography: thick strokes, outline, shadow, strong contrast.
 - Render the headline once only. Do not duplicate names or headline fragments.
@@ -2033,7 +2051,7 @@ Broadcast module translation:
 - If no explicit brush tag exists in the user script, brush strokes are forbidden.
 - Do not convert <文字>, 「quotes」, numbers, conflict words, emotional words, or body text into brush strokes.
 - Do not duplicate any body sentence into a separate brush/stamp/sticker module unless that exact line is explicitly tagged. Only promote a sentence once.
-- (#打卡) means a location badge with a map-pin icon, placed outside asset zones.
+- (#打卡) / (#打卡 地名) / (地點字小)地名 all mean a location badge with a map-pin icon. PLACEMENT RULE: always overlay on the TOP EDGE of the nearest ROLL or image zone — the pin sticks to the frame border, text sits just outside the zone interior. Never float freely. Never render inside the protected ROLL area.
 - <文字> means high-priority headline emphasis or impact typography; render the text exactly if it appears in the whitelist, but it is NOT a brush trigger.
 
 Explicit brush policy for this page:
