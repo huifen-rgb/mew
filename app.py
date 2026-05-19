@@ -124,10 +124,16 @@ STYLE_CONFIG: Dict[str, Dict[str, str]] = {
         "highlight": "Bright Vivid Yellow",
     },
     "選情政論 (Democracy Grey)": {
-        "theme": "Political Election Studio",
-        "ui": "Matte Metallic finishes, Star patterns, Marble textures, Studio spotlights",
-        "palette": "Slate Grey, Navy Blue",
-        "highlight": "Vibrant Scarlet Red",
+        "theme": "Taiwanese Political Broadcast CG — TVBS / CTi / FTV studio style",
+        "ui": (
+            "Background: deep blue-gray gradient (#0d1b2e at edges darkening to #1a2d4a at center). Compose the background with these VISIBLE, DISTINCT design elements — each must be clearly rendered: ELEMENT 1 — GEOMETRIC SIDE PANELS: on the far LEFT edge (x=0 to x=80) and far RIGHT edge (x=1840 to x=1920), render tall angular geometric accent strips in #1e3a5f (lighter navy), with a thin bright-blue (#4fc3f7) inner border line — like broadcast studio set side-light panels. ELEMENT 2 — HEX-GRID OVERLAY: a hex-grid or diagonal circuit-board line pattern in #ffffff at 12% opacity, tiled across the full canvas background — gives depth without overpowering content. ELEMENT 3 — CENTER LIGHT BLOOM: a soft radial glow / spotlight bloom in #1e4d8c at 40% opacity, centered at approximately (960, 300) — upper-center of canvas — creating a sense of depth and stage lighting. ELEMENT 4 — BOTTOM ACCENT LINE: a thin 4-6px bright-blue (#4fc3f7) horizontal line at y=1060, spanning the full canvas width — clean broadcast lower-third boundary, NO yellow-black caution tape. These four elements MUST all appear. Do not simplify to a flat color. STRICTLY NO caution tape, NO warning stripes, NO yellow-black diagonal bands — those are for crime news only."
+            "Cards: dark navy (#0a1a35) with 1-2px white or light-blue border lines — no thick gold frames. "
+            "Brush callout boxes: yellow fill (#f5c518) with black bold text — used for key quotes or conflict phrases only. "
+            "Party color coding: KMT/pan-blue = #1565c0; DPP/pan-green = #1b7a3e; TPP/众 = #00b4d8; use party colors ONLY for party-labeled elements. "
+            "NO marble, NO American flag, NO star-and-stripes, NO silver metallic, NO warm beige, NO decorative gold flourishes."
+        ),
+        "palette": "Deep Navy (#0d1b2e), Steel Blue (#1a3a6e), White text, Yellow highlight (#f5c518)",
+        "highlight": "Yellow (#f5c518) for emphasis boxes and key numbers; Alert Red (#c0392b) for conflict/warning only; White for body text",
     },
     "科技政策 (Cyber Policy)": {
         "theme": "Digital Policy & Tech Hub",
@@ -239,7 +245,7 @@ ASSET_PROTECTION_KEYWORDS = [
 
 def is_asset_protection_tag(tag: str) -> bool:
     """
-    v20.5.2 + v22.2：判斷新聞台素材保護區。
+    v20.5.2 + v22.3：判斷新聞台素材保護區。
     這些不是要畫出來的文字，而是後製塞真實照片/影片/截圖的硬留白框。
 
     支援語法：
@@ -247,6 +253,7 @@ def is_asset_protection_tag(tag: str) -> bool:
       比例圖區：  (圖 4:3) / (圖 4:5) / (圖 16:9) 等
       圓括號圖區：(圖片) / (#開框roll) / (開框ROLL) / (LINE截圖) / (VCR)
       定圖語法：  (#定xxx) / (定xxx圖) / (#開框xxx)
+      行內圖區：  (xxx圖) — 任何以「圖」結尾的圓括號標籤（如：男按電梯門圖、探頭看圖）
     """
     if not tag:
         return False
@@ -271,6 +278,14 @@ def is_asset_protection_tag(tag: str) -> bool:
     # (開框ROLL) / (開框roll) — 不帶 # 的開框語法
     if re.search(r'[（(]\s*開框\s*[Rr][Oo][Ll][Ll]\s*[）)]', t):
         return True
+
+    # (xxx圖) — 行內圖區：任何以「圖」結尾的圓括號標籤
+    # 例：(男按電梯門圖) / (讓女出電梯圖) / (探頭看圖) / (警破窗圖)
+    # 排除：(圖利xxx) 這類純文字
+    if re.search(r'[（(][^)）]{1,20}圖[）)]', t):
+        inner = re.sub(r'[（(）)]', '', t).strip()
+        if not inner.startswith("圖利"):
+            return True
 
     if any(k in t for k in ASSET_PROTECTION_KEYWORDS):
         # 避免把「圖利」這類純文字誤判成圖區
@@ -1028,9 +1043,7 @@ def parse_user_script(script: str) -> ParsedInput:
         "蓋章",
         "假人",
         "icon",
-        "ICON",
         "筆刷",
-        "打卡",
         "關係",
         "群組",
         "頭+字",
@@ -1091,9 +1104,10 @@ Slug zones:
 4. NO stamp effects, brush strokes, arrows, speech bubbles, labels, shadows, or decorative frames may overlap the image zone.
 5. Stamp effects must render OUTSIDE image zones only.
 6. Maintain at least 20px clean safety buffer around every image zone.
-7. DELETE all placeholder text, slug text, and labels from final pixels.
+7. DELETE all placeholder text, slug text, and labels from final pixels. The blank zone must be visually empty — no text of any kind, not even "EMPTY", "圖", "placeholder", "NO text", percentages, or any annotation.
 8. If layout conflict occurs, shrink/reflow text modules; NEVER invade image zones.
 9. Image zones have higher priority than text completeness and all visual effects.
+10. NEVER write instructional text inside a blank zone to describe what it is. A blank zone must look blank. Silence = correct.
 
 [EFFECT TAG SYNTAX]
 Brush effect — triggered ONLY by explicit tags; never applied automatically:
@@ -1107,11 +1121,6 @@ Stamp must always render OUTSIDE all image zones and ticker safe zone.
 - (對話框) / (拉對話框) / (+對話框) => Render as speech bubble. Delete instruction text.
 - (數據框) => Render as layered data block. Delete instruction text.
 - (icon假人大頭) / (數個假人icon) => Render as simple person icon group. Delete instruction text.
-- (#打卡) => Render a map location pin icon. Place it overlaid on the TOP EDGE of the nearest ROLL/image zone. Pin icon sits on the border; text sits outside the zone interior.
-- (#打卡 地名) => Render a map location pin icon + place name text. Overlay on top edge of ROLL zone. Text must remain outside the ROLL interior.
-- (地點字小)地名 => Same as (#打卡 地名) but text is smaller. Overlay on top edge of ROLL zone. Text outside ROLL interior.
-- ALL 打卡 variants: pin badge sticks to the top-left or top-center of the ROLL frame border; never floats freely in empty space; never overlaps interior of the ROLL zone.
-- (#ICON) / 文字(#ICON) / (#警方ICON) => Render a contextually appropriate icon next to the preceding text. Delete the (#ICON) tag itself.
 """.strip()
 
 
@@ -1123,7 +1132,6 @@ def build_frame_rules(frame_type: str) -> str:
 - Output must look like polished professional TV news CG.
 - Text hierarchy must be strong and readable on broadcast.
 - TOP HEADLINE LOCK: headline must always be placed at the very top edge area of the canvas, whether it is one line or two lines.
-- HEADLINE FULL-WIDTH EXCLUSIVE ZONE: the headline band always spans the full 1920px width. No image zone, ROLL frame, card, icon, or any object may appear to the side of or at the same height as the headline. All non-headline content must start below the headline band.
 - One-line headline: keep it in the top headline band, centered or left-weighted, never moved to middle.
 - Two-line headline: stack both lines in the top headline band, never placed in the center body area.
 - Do not leave accidental blank spaces, except protected image zones and ticker safe zone.
@@ -1150,9 +1158,8 @@ When layout rules conflict, resolve strictly in this order — higher number alw
 """,
         "標大框": """
 [FRAME: 標大框]
-- Top 30-40%: MEGA headline band — full canvas width, exclusive. No image, no card, no icon anywhere beside or at the same height as the headline.
-- ALL image zones, ROLL frames, cards, and information modules must be placed STRICTLY BELOW the headline band.
-- Lower area: main image zone (large, left or center) plus information modules (right or bottom).
+- Top 30-40%: MEGA headline, forced 2-line or 3-line if stronger.
+- Lower area: main image zone plus information modules.
 - Main visual zone must be large and untouched.
 - Suitable for conflict or breaking-style news summaries.
 """,
@@ -1214,10 +1221,10 @@ def sanitize_script_for_image_model(script: str) -> str:
 
     處理優先序（高 → 低）：
     1. 欄位前綴字（【標】【大標】【小標】）→ 移除
-    2. 圖區保護語法（#開框roll / #定圖 / VCR 等）→ 原封不動
-    3. 效果標籤（#筆刷 / #蓋章）→ 原封不動，圖像模型需要看到
-    4. (#打卡) 地點 icon → 轉成 "location pin icon [地名]" 語意描述
-    5. (#ICON) / 文字(#ICON) 行內 icon → 轉成 "[文字] icon" 語意描述
+    2. 圖區保護語法（#開框roll / #定圖 / VCR / xxx圖 等）→ 原封不動
+    3. 效果標籤（#筆刷 / #蓋章）→ 原封不動
+    4. (#打卡) 地點 icon → 轉成語意描述，貼 ROLL 框上緣
+    5. (#ICON) 行內 icon → 明確標註才轉，不推斷
     6. 版型控制圓括號（表格 / LOGO 等）→ 移除
     7. 方括號文字標籤 → 保留內文、移除括號（圖區標籤不動）
     8. 雙引號符號 → 移除（保留內文）
@@ -1228,20 +1235,15 @@ def sanitize_script_for_image_model(script: str) -> str:
     # 1. 欄位前綴字
     text = re.sub(r'【標[題]?】|【大標[題]?】|【小標[題]?】', '', text)
 
-    # 2–6. 圓括號逐一判斷，按優先序處理
-
-    # 預處理 A：「文字(#ICON)」行內格式 → 「文字 icon」
-    # 必須在通用括號處理前做，否則括號內的 inner 只有 #ICON，拿不到前面的「警方」
+    # 預處理 A：「文字(#ICON)」行內格式 → 「文字 icon (explicit icon tag)」
+    # 只處理帶 # 的 ICON（明確標註），不處理純 (ICON) 避免誤判
     text = re.sub(
-        r'([一-鿿\w]+)\s*\([#＃]?(?:ICON|icon)\)',
-        lambda m: m.group(1) + ' icon',
+        r'([\u4e00-\u9fff\w]+)\s*\([#＃](?:ICON|icon)\)',
+        lambda m: m.group(1) + ' icon (explicit icon tag)',
         text,
     )
 
-    # 預處理 B：「(地點字小)地名」語法 → 「location pin icon [地名] (small text)」
-    # 格式：圓括號內含「字小」字型指示，緊接在後面的中文是地名
-    # 例：(地點字小)花蓮  /  (地點字小) 台北車站
-    # → 轉成語意描述，標記 ROLL 框貼邊渲染指示
+    # 預處理 B：「(地點字小)地名」→ location pin icon
     def _replace_location_small(m: re.Match) -> str:
         loc = m.group(1).strip()
         return f"location pin icon {loc} (small text, overlay on top edge of ROLL zone)"
@@ -1252,9 +1254,10 @@ def sanitize_script_for_image_model(script: str) -> str:
         text,
     )
 
+    # 2–6. 圓括號逐一判斷，按優先序處理
     def _replace_paren(m: re.Match) -> str:
-        raw = m.group(0)            # 含括號完整字串，例如 (#開框roll)
-        inner = m.group(1).strip()  # 去掉括號的內容
+        raw = m.group(0)
+        inner = m.group(1).strip()
 
         # 2. 圖區保護語法 → 原封不動
         if is_asset_protection_tag(raw):
@@ -1264,18 +1267,18 @@ def sanitize_script_for_image_model(script: str) -> str:
         if re.search(r'[#＃]?(?:筆刷|蓋章)', inner):
             return raw
 
-        # 4. (#打卡) / (#打卡 地名) → location pin icon，貼在 ROLL 框上緣
+        # 4. (#打卡) / (#打卡 地名) → location pin icon，貼 ROLL 框上緣
         if re.search(r'[#＃]?打卡', inner):
             loc = re.sub(r'[#＃]?打卡\s*', '', inner).strip()
             loc_str = (' ' + loc) if loc else ''
             return f"location pin icon{loc_str} (overlay on top edge of ROLL zone, outside ROLL interior)"
 
-        # 5. (#ICON) / (#警方ICON) / (警方#ICON) → "[前綴] icon"
-        if re.search(r'[#＃]?ICON', inner, flags=re.IGNORECASE):
-            # 移除 # 符號和 ICON 關鍵字，保留前綴文字
-            prefix = re.sub(r'[#＃]', '', inner)          # 先移除所有 #
+        # 5. (#ICON) 系列 — 只有帶 # 的才轉，不帶 # 的不處理（避免腦補）
+        # 涵蓋：(#ICON) / (#警方ICON) / (#警方icon) — # 在括號內任何位置
+        if re.search(r'[#＃]', inner) and re.search(r'ICON|icon', inner):
+            prefix = re.sub(r'[#＃]', '', inner)
             prefix = re.sub(r'ICON', '', prefix, flags=re.IGNORECASE).strip()
-            return f"{prefix} icon".strip() if prefix else "icon"
+            return f"{prefix} icon (explicit icon tag)".strip() if prefix else "icon (explicit icon tag)"
 
         # 6. 版型控制指令 → 移除
         LAYOUT_KW = [
@@ -1286,7 +1289,6 @@ def sanitize_script_for_image_model(script: str) -> str:
         if any(kw in inner for kw in LAYOUT_KW):
             return ""
 
-        # 其他圓括號 → 原封不動（保留事實性括號）
         return raw
 
     text = re.sub(r'\(([^)]*)\)', _replace_paren, text)
@@ -1301,10 +1303,10 @@ def sanitize_script_for_image_model(script: str) -> str:
     text = re.sub(r'\[([^\]]+)\]', _replace_square, text)
 
     # 8. 移除雙引號符號（保留內文）
-    text = re.sub(r'["“”「」『』]', '', text)
+    text = re.sub(r'["\u201c\u201d\u300c\u300d\u300e\u300f]', '', text)
 
     # 9. vs. 統一格式
-    text = re.sub(r'\s*[Vv][Ss]\.?\s*', ' vs. ', text)
+    text = re.sub(r'\s*[Vv][Vs]\.?\s*', ' vs. ', text)
 
     return text.strip()
 
@@ -1376,14 +1378,32 @@ COLOR STRATEGY: {color_logic}
 Mode: {headline_mode}
 Headline text: {_clean_visual_text(parsed.title)}
 
-Rules:
-- The headline must always sit at the very top of the canvas.
-- The headline band spans the FULL WIDTH of the canvas (1920px). No object of any kind — image zone, ROLL frame, card, icon, badge, or decoration — may appear beside or at the same vertical level as the headline. The headline rows are an exclusive zone.
-- All lines of a multi-line headline must stay inside the TOP HEADLINE BAND; never move any line into the body area.
-- Never merge headline with cards, compress to one line, or delete any line.
-- Preserve line breaks exactly as written.
-- Headline must dominate the design: use huge broadcast-style Chinese typography with thick strokes, strong outline, shadow, and layered emphasis.
-- IMAGE ZONES AND ALL OTHER CONTENT START STRICTLY BELOW THE HEADLINE BAND. Zero overlap, zero side-by-side placement.
+TOP HEADLINE LOCK:
+The headline must always sit at the very top.
+
+If headline contains multiple lines:
+
+ALL lines must stay inside the TOP HEADLINE BAND.
+
+Never move line 2 or line 3 into body area.
+
+Never merge with cards.
+
+Never compress to one line.
+
+Never delete line 2.
+
+Preserve line breaks exactly.
+
+Headline must dominate the design.
+
+Use huge broadcast-style typography.
+
+Strong outline.
+
+Shadow.
+
+Layered emphasis.
 
 [LAYOUT]
 Layout mode: {layout_mode}
@@ -1394,14 +1414,45 @@ Layout mode: {layout_mode}
 {build_visual_token_compiler_block(script, frame_type, headline_mode)}
 
 [PROTECTED PHOTO ZONE｜ABSOLUTE]
-Detected image / roll zones are HARD EMPTY SAFE ZONES reserved for manual post-production.
 
-Rules:
-- Absolutely forbidden inside any image zone: text, icons, badges, speech bubbles, brush effects, stamp effects, labels, callouts, arrows, decorations, captions, highlight strips, glow effects, shadow overlays, UI cards, or borders crossing into the zone.
-- No visual object may overlap, partially overlap, or edge-touch a protected zone.
-- Keep at least 20px safety margin around every protected zone.
-- Protected zones must stay 100% clean blank placeholders.
-- If any bubble, brush, label, or badge is near a protected zone, AUTO MOVE it outside. Never prioritize aesthetics over protected zone integrity.
+Detected image / roll zones are HARD EMPTY SAFE ZONES.
+
+These zones are reserved for manual post-production.
+
+Inside these zones, absolutely forbidden:
+
+- text
+- icons
+- badges
+- speech bubbles
+- brush effects
+- stamp effects
+- labels
+- callouts
+- arrows
+- decorations
+- captions
+- highlight strips
+- glow effects
+- shadow overlays
+- UI cards
+- borders crossing into the zone
+
+No visual object may overlap.
+
+No partial overlap.
+
+No edge touching.
+
+Keep at least 20px safety margin.
+
+Protected zones must stay 100% clean blank placeholders.
+
+If a bubble, brush, label, or badge is near a protected zone:
+
+AUTO MOVE it outside the protected zone.
+
+Never prioritize aesthetics over protected zone integrity.
 {build_layout_diagnostics(parsed, frame_type)}
 
 [v19.6 DIRECTOR DECISION]
@@ -1426,6 +1477,7 @@ Rules:
 - BRUSH EFFECT IS EXPLICIT ONLY: Do not create brush effects unless the user explicitly writes (#筆刷), (筆刷), #筆刷, ---筆刷, or 筆刷效果.
 - Do not convert <emphasis>, quotes, numbers, conflict words, or normal body text into brush strokes.
 - Do not duplicate body text into a separate brush/stamp/sticker module unless explicitly tagged. Only promote a sentence once.
+- ICON IS EXPLICIT ONLY: Do not render any icon — person silhouettes, organization emblems, phone icons, money icons, building icons, shield/badge icons, crane icons, party icons, or ANY decorative symbol — unless the user script explicitly writes (icon假人大頭), (數個假人icon), (#ICON), (警方#ICON), or another named icon tag. Never infer icons from job titles, organization names, dates, or news context. When in doubt: NO ICON.
 {build_zero_assumption_policy(script)}
 - If any image zone and text compete for space, preserve both by reducing spacing, reducing font size, or rearranging modules.
 - Final result must be a professional TV news CG, not a poster, not a webpage.
@@ -1708,13 +1760,18 @@ def build_visual_token_compiler_block(script: str, frame_type: str, headline_mod
     for block in blocks:
         clean_lines: List[str] = []
         for line in block:
-            if line.strip() == parsed.title.strip() or line.strip().startswith(("標:", "標=", "大標:", "大標=", "標題:", "標題=")):
+            stripped = line.strip()
+            if stripped == parsed.title.strip() or stripped.startswith(("標:", "標=", "大標:", "大標=", "標題:", "標題=")):
                 continue
-            if is_asset_protection_tag(line):
+            if stripped.startswith(("大標：", "標題：", "標：")):
                 continue
-            if re.fullmatch(r"[-—=]{3,}", line):
+            if is_asset_protection_tag(stripped):
                 continue
-            cleaned = _clean_visual_text(line)
+            # 行內圖區：整行是「文字 + (xxx圖)」且 cleaned 後只剩文字，
+            # 但圖區標籤部分已被 _clean_visual_text 移除，保留文字部分即可
+            if re.fullmatch(r"[-—=]{3,}", stripped):
+                continue
+            cleaned = _clean_visual_text(stripped)
             if cleaned:
                 clean_lines.append(cleaned)
         if clean_lines:
@@ -1754,10 +1811,26 @@ def build_visual_token_compiler_block(script: str, frame_type: str, headline_mod
             "portrait strip when portrait slots exist, prosecutor/evidence board for charges or legal items, "
             "callout stamp or brush only when explicitly requested, and clean blank editorial photo zones."
         )
+    elif any(word in script for word in ["參選", "候選人", "選舉", "掃街", "提名", "民進黨", "國民黨", "民眾黨", "市長", "立委", "議員", "政論", "攻防", "政黨", "彈劾", "立院", "席次"]):
+        suggested_layout = (
+            "Use Taiwanese TV political broadcast CG composition — reference TVBS/CTi/FTV on-air political graphics. "
+            "BACKGROUND: Background: deep blue-gray gradient (#0d1b2e at edges darkening to #1a2d4a at center). Compose the background with these VISIBLE, DISTINCT design elements — each must be clearly rendered: ELEMENT 1 — GEOMETRIC SIDE PANELS: on the far LEFT edge (x=0 to x=80) and far RIGHT edge (x=1840 to x=1920), render tall angular geometric accent strips in #1e3a5f (lighter navy), with a thin bright-blue (#4fc3f7) inner border line — like broadcast studio set side-light panels. ELEMENT 2 — HEX-GRID OVERLAY: a hex-grid or diagonal circuit-board line pattern in #ffffff at 12% opacity, tiled across the full canvas background — gives depth without overpowering content. ELEMENT 3 — CENTER LIGHT BLOOM: a soft radial glow / spotlight bloom in #1e4d8c at 40% opacity, centered at approximately (960, 300) — upper-center of canvas — creating a sense of depth and stage lighting. ELEMENT 4 — BOTTOM ACCENT LINE: a thin 4-6px bright-blue (#4fc3f7) horizontal line at y=1060, spanning the full canvas width — clean broadcast lower-third boundary, NO yellow-black caution tape. These four elements MUST all appear. Do not simplify to a flat color. STRICTLY NO caution tape, NO warning stripes, NO yellow-black diagonal bands — those are for crime news only. NO marble, NO American flag, NO star patterns, NO silver, NO warm beige."
+            "HEADLINE: full-width white Chinese mega typography; key emphasis words in yellow (#f5c518) inside a dark fill box. "
+            "INFORMATION CARDS: dark navy rectangle (#0a1a35) with 1-2px white or light-blue border; white body text; "
+            "use a yellow-fill (#f5c518) black-text brush-style callout box for the single most important quote or conflict sentence — not on every card. "
+            "PARTY COLOR RULE: "
+            "- KMT / 國民黨 / 泛藍 name cards and charts: use #1565c0 blue; "
+            "- DPP / 民進黨 / 泛綠 name cards and charts: use #1b7a3e green; "
+            "- TPP / 民眾黨 / 众 name cards and charts: use #00b4d8 cyan; "
+            "Apply party colors ONLY to party-labeled elements — NOT to background, NOT to generic text cards. "
+            "PORTRAIT ZONES: leave blank for post-production; add candidate name + title label BELOW or BESIDE the blank zone, not inside it. "
+            "SEAT CHART (if seat numbers present): render as pie or horizontal bar chart using party colors above, dark background, white numeric labels. "
+            "Overall mood: authoritative, clean, broadcast-ready — not a poster, not a dashboard, not a website."
+        )
     elif any(word in script for word in ["股", "億", "%", "營收", "財經", "漲", "跌"]):
         suggested_layout = (
             "Use financial broadcast composition with strong number hierarchy and clean data panels, "
-            "but still avoid web dashboard aesthetics."
+            "premium navy-gold palette; avoid web dashboard aesthetics."
         )
     else:
         suggested_layout = (
@@ -1774,9 +1847,7 @@ Do not render any instruction labels, module labels, placeholder labels, debug l
 Headline treatment:
 - Use {headline_mode}.
 - Exact headline text: {title or '未提供'}
-- Place the headline at the very top of the canvas, spanning the FULL WIDTH (1920px).
-- EXCLUSIVE ZONE: no image frame, ROLL box, card, icon, badge, or any other element may appear beside the headline or at the same vertical level. The top band belongs entirely to the headline.
-- All other content — image zones, text cards, icons — must start strictly below the headline band.
+- Place the headline at the top only.
 - Make it visually dominant, like an on-air Taiwanese TV news mega headline.
 - Use layered Chinese broadcast typography: thick strokes, outline, shadow, strong contrast.
 - Render the headline once only. Do not duplicate names or headline fragments.
@@ -1871,6 +1942,18 @@ def _content_palette_hint(script: str, frame_type: str) -> str:
     s = script
     if _contains_any(s, ["共諜", "起訴", "貪污", "羈押", "檢", "司法", "三重罪", "求刑", "洗錢"]):
         return "legal/investigative palette: deep navy, black, warning yellow, restrained red accents, serious prosecution mood"
+    if _contains_any(s, ["參選", "候選人", "選舉", "選情", "掃街", "提名", "民進黨", "國民黨", "民眾黨", "市長", "立委", "議員", "政論", "攻防", "政黨", "彈劾", "立院", "席次"]):
+        return (
+            "Taiwanese political broadcast CG palette — modelled on TVBS/CTi/FTV on-air graphics. "
+            "Background: deep blue-gray gradient (#0d1b2e at edges darkening to #1a2d4a at center). Compose the background with these VISIBLE, DISTINCT design elements — each must be clearly rendered: ELEMENT 1 — GEOMETRIC SIDE PANELS: on the far LEFT edge (x=0 to x=80) and far RIGHT edge (x=1840 to x=1920), render tall angular geometric accent strips in #1e3a5f (lighter navy), with a thin bright-blue (#4fc3f7) inner border line — like broadcast studio set side-light panels. ELEMENT 2 — HEX-GRID OVERLAY: a hex-grid or diagonal circuit-board line pattern in #ffffff at 12% opacity, tiled across the full canvas background — gives depth without overpowering content. ELEMENT 3 — CENTER LIGHT BLOOM: a soft radial glow / spotlight bloom in #1e4d8c at 40% opacity, centered at approximately (960, 300) — upper-center of canvas — creating a sense of depth and stage lighting. ELEMENT 4 — BOTTOM ACCENT LINE: a thin 4-6px bright-blue (#4fc3f7) horizontal line at y=1060, spanning the full canvas width — clean broadcast lower-third boundary, NO yellow-black caution tape. These four elements MUST all appear. Do not simplify to a flat color. STRICTLY NO caution tape, NO warning stripes, NO yellow-black diagonal bands — those are for crime news only."
+            "Headline: large white Chinese broadcast typography with black stroke and shadow; key emphasis words in yellow (#f5c518) with dark fill box. "
+            "Information cards: dark navy (#0a1a35) rectangle with 1-2px white or light-blue border; white body text; no thick decorative gold frames. "
+            "Brush/quote callout: yellow fill (#f5c518) black bold text — for key conflict sentences or notable quotes only; not used on every card. "
+            "Party color rule: KMT/pan-blue elements = #1565c0 blue; DPP/pan-green elements = #1b7a3e green; TPP/众 elements = #00b4d8 cyan; "
+            "use party colors ONLY on party-labeled name cards, seat-count charts, or party banners — not on background or generic cards. "
+            "Data/seat chart: pie or bar chart uses party colors above; clean dark background, white labels. "
+            "STRICTLY FORBIDDEN: marble texture, American flag, star-and-stripes, silver metallic sheen, warm beige, decorative gold flourishes, gradient rainbow, neon glow."
+        )
     if _contains_any(s, ["國防", "軍購", "軍史", "營區", "國軍", "海馬士", "軍", "統戰"]):
         return "defense/political-security palette: dark blue, steel gray, military olive, alert red, metallic broadcast texture"
     if _contains_any(s, ["鼠", "蟑", "環境", "防治", "衛生", "市府"]):
@@ -2051,7 +2134,7 @@ Broadcast module translation:
 - If no explicit brush tag exists in the user script, brush strokes are forbidden.
 - Do not convert <文字>, 「quotes」, numbers, conflict words, emotional words, or body text into brush strokes.
 - Do not duplicate any body sentence into a separate brush/stamp/sticker module unless that exact line is explicitly tagged. Only promote a sentence once.
-- (#打卡) / (#打卡 地名) / (地點字小)地名 all mean a location badge with a map-pin icon. PLACEMENT RULE: always overlay on the TOP EDGE of the nearest ROLL or image zone — the pin sticks to the frame border, text sits just outside the zone interior. Never float freely. Never render inside the protected ROLL area.
+- (#打卡) means a location badge with a map-pin icon, placed outside asset zones.
 - <文字> means high-priority headline emphasis or impact typography; render the text exactly if it appears in the whitelist, but it is NOT a brush trigger.
 
 Explicit brush policy for this page:
