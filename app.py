@@ -238,6 +238,8 @@ ASSET_PROTECTION_KEYWORDS = [
     "圖", "圖片", "定圖", "定", "開框", "ROLL", "roll", "Roll",
     "LINE截圖", "截圖", "VCR", "vcr",
     "監視器", "畫面", "外觀照", "照片", "空拍", "地圖", "示意", "素材", "影像",
+    # 常見複合圖區命名
+    "合體照", "年輕照片", "結婚照", "婚紗", "合照", "大頭照", "證件照",
     # 比例格式：(圖 4:3) / (圖 4:5) 等，用空格+數字比例標記
     "圖 4:", "圖 16:", "圖 9:", "圖 1:",
 ]
@@ -1086,6 +1088,7 @@ def build_symbol_matrix_v17() -> str:
 - <尖括號> => Highest-priority keyword emphasis. Remove angle brackets in final artwork.
 - 【方頭括號】 => Bold color-block subheading. Remove brackets in final artwork.
 - (圓括號內容) => Treat as layout instruction or preserved factual parenthesis depending on context.
+- (單一人名) e.g. (賴) / (鄭) / (柯) => Person name emphasis tag. KEEP the parentheses in the rendered artwork. Render as a visually distinct name label with color emphasis — do NOT delete the ( ) brackets around it.
 
 [IMAGE ZONE SYNTAX — ALL VARIANTS = HARD EMPTY IMAGE ZONE]
 Square-bracket zones:
@@ -1104,10 +1107,10 @@ Slug zones:
 4. NO stamp effects, brush strokes, arrows, speech bubbles, labels, shadows, or decorative frames may overlap the image zone.
 5. Stamp effects must render OUTSIDE image zones only.
 6. Maintain at least 20px clean safety buffer around every image zone.
-7. DELETE all placeholder text, slug text, and labels from final pixels. The blank zone must be visually empty — no text of any kind, not even "EMPTY", "圖", "placeholder", "NO text", percentages, or any annotation.
+7. DELETE all placeholder text, slug text, and labels from final pixels. The blank zone must be visually empty — no text of any kind inside the zone, not even "EMPTY", "100% EMPTY", "圖", "placeholder", "protected", "ROLL", "footage", "NO text", percentages, debug labels, or any annotation whatsoever.
 8. If layout conflict occurs, shrink/reflow text modules; NEVER invade image zones.
 9. Image zones have higher priority than text completeness and all visual effects.
-10. NEVER write instructional text inside a blank zone to describe what it is. A blank zone must look blank. Silence = correct.
+10. NEVER write any text inside a blank zone — not to describe it, not to label it, not to annotate it. A blank zone must be VISUALLY EMPTY. The correct output for a protected zone is a clean white or near-white rectangle with no content inside.
 
 [EFFECT TAG SYNTAX]
 Brush effect — triggered ONLY by explicit tags; never applied automatically:
@@ -1235,6 +1238,11 @@ def sanitize_script_for_image_model(script: str) -> str:
     # 1. 欄位前綴字
     text = re.sub(r'【標[題]?】|【大標[題]?】|【小標[題]?】', '', text)
 
+    # 預處理 0：清除純位置提示括號 (左邊) / (右邊) 等
+    # 注意：只清除後面緊接著另一個括號的純位置 tag，例如 (左邊)(ROLL) → (ROLL)
+    # (左VCR) / (右VCR) 是圖區 tag，不在此清除，由步驟 2 處理
+    text = re.sub(r'\((左邊|右邊|左側|右側|上方|下方|中間|左下|右下|左|右)\)(?=\s*\()', '', text)
+
     # 預處理 A：「文字(#ICON)」行內格式 → 「文字 icon (explicit icon tag)」
     # 只處理帶 # 的 ICON（明確標註），不處理純 (ICON) 避免誤判
     text = re.sub(
@@ -1259,9 +1267,11 @@ def sanitize_script_for_image_model(script: str) -> str:
         raw = m.group(0)
         inner = m.group(1).strip()
 
-        # 2. 圖區保護語法 → 原封不動
+        # 2. 圖區保護語法 → 轉為純留白指令，絕對不把原始標籤文字傳給圖片模型
+        # 原始標籤（如 (定圖 俗女) / (#右下ROLL) / (+襯底圖 金德興)）傳給模型會被當作
+        # 說明文字印在圖框內，造成 EMPTY / 定圖 俗女 等標籤出現在成品上。
         if is_asset_protection_tag(raw):
-            return raw
+            return "[PROTECTED BLANK ZONE — render as 100% visually empty white rectangle, absolutely no text, no label, no icon, no decoration inside]"
 
         # 3. 效果標籤（筆刷 / 蓋章）→ 原封不動
         if re.search(r'[#＃]?(?:筆刷|蓋章)', inner):
@@ -1284,6 +1294,7 @@ def sanitize_script_for_image_model(script: str) -> str:
         LAYOUT_KW = [
             "以下請", "請以", "呈現", "表格",
             "色塊", "對話框", "數據框", "假人",
+            "小圓人頭", "人頭圖", "頭圖",
             "LOGO", "logo", "Logo",
         ]
         if any(kw in inner for kw in LAYOUT_KW):
@@ -1470,7 +1481,7 @@ Never prioritize aesthetics over protected zone integrity.
 [FINAL IMAGE RESTRICTIONS - CRITICAL]
 {STRICT_NO_EXTRA_FACTS.strip()}
 - DELETE ALL literal instruction tags, including [圖], [圖-xxx], (#定xxx), (色塊), (對話框), #筆刷.
-- DELETE ALL double quotes and angle brackets after applying visual emphasis.
+- DELETE ALL double quotes and angle brackets after applying visual emphasis. Exception: single-name parentheses like (賴) / (鄭) / (柯) must KEEP their ( ) brackets — render them as styled name labels.
 - Every detected image placeholder must become a clean empty protected zone for real post-production photos.
 - No text/icon/UI/decoration/stamp/brush effect may touch or overlap protected image zones.
 - Stamp effects must be outside [圖] placeholders; stamps may sit on card borders, date labels, or background only.
@@ -1483,7 +1494,13 @@ Never prioritize aesthetics over protected zone integrity.
 - Final result must be a professional TV news CG, not a poster, not a webpage.
 
 [CONTENT SCRIPT - CLEANED FOR RENDERING]
-The following text has been pre-processed. All editor markup (【】, [], ()) has been converted to plain render-ready text. Render exactly what you see; do not re-introduce bracket syntax, labels, or formatting tags.
+The following text has been pre-processed. All editor markup (【】, [], ()) has been converted to plain render-ready text.
+CRITICAL OVERRIDE — IMAGE ZONE LINES:
+Any line that reads "[PROTECTED BLANK ZONE — render as 100% visually empty white rectangle, absolutely no text, no label, no icon, no decoration inside]"
+means: draw a clean white or near-white empty rectangle at that layout position.
+Zero text. Zero label. Zero icon. Zero decoration. Completely blank.
+Do NOT print the words "PROTECTED BLANK ZONE" or any part of that instruction.
+The correct output for that zone is a visually empty rectangle.
 {sanitize_script_for_image_model(script)}
 
 [DIRECTOR NOTES]
@@ -1757,6 +1774,7 @@ def build_visual_token_compiler_block(script: str, frame_type: str, headline_mod
     blocks = _split_script_blocks(script)
 
     text_groups: List[List[str]] = []
+    _seen_lines: set = set()  # 全域去重：防止同一行文字在稿子裡出現多次被重複送進 prompt
     for block in blocks:
         clean_lines: List[str] = []
         for line in block:
@@ -1767,20 +1785,47 @@ def build_visual_token_compiler_block(script: str, frame_type: str, headline_mod
                 continue
             if is_asset_protection_tag(stripped):
                 continue
-            # 行內圖區：整行是「文字 + (xxx圖)」且 cleaned 後只剩文字，
-            # 但圖區標籤部分已被 _clean_visual_text 移除，保留文字部分即可
             if re.fullmatch(r"[-—=]{3,}", stripped):
                 continue
             cleaned = _clean_visual_text(stripped)
-            if cleaned:
+            if cleaned and cleaned not in _seen_lines:
+                _seen_lines.add(cleaned)
                 clean_lines.append(cleaned)
         if clean_lines:
             text_groups.append(clean_lines[:6])
 
+    # (#定xxx圖) 人物肖像區，單獨識別
+    person_zone_tags = [z for z in asset_zones if re.search(r'[#＃]定.{1,12}圖', z)]
     portrait_tags = [z for z in asset_zones if any(k in z for k in ["常如山圖", "工程師圖", "特助圖", "人圖", "人物圖"])]
-    roll_tags = [z for z in asset_zones if ("roll" in z.lower() or "ROLL" in z)]
+    _ROLL_VCR_KW = ("roll", "vcr", "開框roll", "開框ROLL")
+    roll_tags = [z for z in asset_zones if any(k in z.lower() for k in _ROLL_VCR_KW)]
     document_tags = [z for z in asset_zones if any(k in z for k in ["文件", "簽約", "合約", "文書"])]
-    other_tags = [z for z in asset_zones if z not in portrait_tags + roll_tags + document_tags]
+    other_tags = [z for z in asset_zones if z not in portrait_tags + roll_tags + document_tags + person_zone_tags]
+
+    # 掃描稿件找 ROLL/VCR 的明確位置標示
+    # 有明確標示（左/右/中）才輸出，沒有標示就讓 Gemini 自己根據版面決定
+    _ROLL_TAG_PAT = r'ROLL|roll|VCR|vcr|#?開框[Rr][Oo][Ll][Ll]'
+    _POS_MAP = {
+        "左": "left", "左邊": "left", "左側": "left", "左下": "lower-left",
+        "右": "right", "右邊": "right", "右側": "right", "右下": "lower-right",
+        "中": "center", "中間": "center",
+    }
+    roll_position: Optional[str] = None  # None = 未指定，不假設
+    for _ln in script.splitlines():
+        _ln = _ln.strip()
+        # (右VCR) / (左ROLL) 等位置內嵌 tag
+        _m = re.search(rf'\((左下|右下|左邊|右邊|左側|右側|中間|左|右|中)({_ROLL_TAG_PAT})\)', _ln, re.IGNORECASE)
+        if _m:
+            roll_position = _POS_MAP.get(_m.group(1), _m.group(1))
+            break
+        # (左邊)(ROLL) / (右邊)(#開框roll) 等分開的兩個 tag
+        _pm = re.search(r'\((左下|右下|左邊|右邊|左側|右側|中間|左|右|中)\)', _ln)
+        if _pm and re.search(rf'\(({_ROLL_TAG_PAT})\)', _ln, re.IGNORECASE):
+            roll_position = _POS_MAP.get(_pm.group(1), _pm.group(1))
+            break
+        # 有 ROLL/VCR 但無位置 → 維持 None
+        if re.search(rf'\(({_ROLL_TAG_PAT})\)', _ln, re.IGNORECASE):
+            break  # 找到了 ROLL 但沒位置，停止掃描，roll_position 保持 None
 
     text_group_lines: List[str] = []
     for idx, lines in enumerate(text_groups, start=1):
@@ -1796,9 +1841,26 @@ def build_visual_token_compiler_block(script: str, frame_type: str, headline_mod
             f"- Portrait strip: {len(portrait_tags)} equal vertical portrait slots, aligned like Taiwanese crime-news mugshot panels, with clean borders and blank interiors for real photos."
         )
     for tag in roll_tags:
-        visual_zone_lines.append(f"- Main footage zone: {_asset_zone_spatial_hint(tag, 0, len(asset_zones), frame_type)}")
+        if roll_position:
+            pos_text = f"on the {roll_position} side of the canvas, "
+        else:
+            pos_text = "positioned according to the overall layout (no explicit position was specified), "
+        visual_zone_lines.append(
+            f"- MAIN ROLL/FOOTAGE ZONE (MANDATORY — must appear in final image): "
+            f"a large blank white rectangle {pos_text}"
+            f"occupying at least 35-40% of canvas width and most of the lower height. "
+            f"This zone is REQUIRED. Do NOT omit it. Interior must be 100% blank white — no text, no icon, no label."
+        )
     for tag in document_tags:
         visual_zone_lines.append(f"- Document/evidence zone: {_asset_zone_spatial_hint(tag, 0, len(asset_zones), frame_type)}")
+    for i, tag in enumerate(person_zone_tags, start=1):
+        _pname = re.sub(r'[（(）)#＃]', '', tag).strip()
+        _pname = re.sub(r'^定', '', _pname)
+        _pname = re.sub(r'圖$', '', _pname)
+        visual_zone_lines.append(
+            f"- Person portrait zone {i} ({_pname}): blank white rectangle for post-production portrait of {_pname}. "
+            f"Name label '{_pname}' goes BELOW or BESIDE this zone, never inside. Interior must be 100% blank."
+        )
     for i, tag in enumerate(other_tags, start=1):
         visual_zone_lines.append(f"- Editorial image zone {i}: {_asset_zone_spatial_hint(tag, i, len(asset_zones), frame_type)}")
 
