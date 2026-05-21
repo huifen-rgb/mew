@@ -261,6 +261,10 @@ def is_asset_protection_tag(tag: str) -> bool:
         return False
     t = tag.strip()
 
+    # 帶 + 前綴的一定是模組指令（如 (+色塊壓xxx圖框下) / (+筆刷字) / (+對話框)），不是圖區
+    if re.match(r'^\([+＋]', t):
+        return False
+
     # [圖] / [圖-左] / [圖-右] / [圖-xxx]
     if t.startswith("[圖"):
         return True
@@ -1088,7 +1092,6 @@ def build_symbol_matrix_v17() -> str:
 - <尖括號> => Highest-priority keyword emphasis. Remove angle brackets in final artwork.
 - 【方頭括號】 => Bold color-block subheading. Remove brackets in final artwork.
 - (圓括號內容) => Treat as layout instruction or preserved factual parenthesis depending on context.
-- (單一人名) e.g. (賴) / (鄭) / (柯) => Person name emphasis tag. KEEP the parentheses in the rendered artwork. Render as a visually distinct name label with color emphasis — do NOT delete the ( ) brackets around it.
 
 [IMAGE ZONE SYNTAX — ALL VARIANTS = HARD EMPTY IMAGE ZONE]
 Square-bracket zones:
@@ -1481,7 +1484,7 @@ Never prioritize aesthetics over protected zone integrity.
 [FINAL IMAGE RESTRICTIONS - CRITICAL]
 {STRICT_NO_EXTRA_FACTS.strip()}
 - DELETE ALL literal instruction tags, including [圖], [圖-xxx], (#定xxx), (色塊), (對話框), #筆刷.
-- DELETE ALL double quotes and angle brackets after applying visual emphasis. Exception: single-name parentheses like (賴) / (鄭) / (柯) must KEEP their ( ) brackets — render them as styled name labels.
+- DELETE ALL double quotes and angle brackets after applying visual emphasis.
 - Every detected image placeholder must become a clean empty protected zone for real post-production photos.
 - No text/icon/UI/decoration/stamp/brush effect may touch or overlap protected image zones.
 - Stamp effects must be outside [圖] placeholders; stamps may sit on card borders, date labels, or background only.
