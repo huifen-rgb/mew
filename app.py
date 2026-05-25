@@ -601,6 +601,165 @@ def auto_patch_missing_image_zones(script: str, frame_type: str) -> str:
     return cleaned
 
 
+
+# =========================================================
+# v23 HEADLINE IMMUTABLE OBJECT LOCK
+# =========================================================
+
+def extract_headline_lines(script: str) -> List[str]:
+    lines = [x.rstrip() for x in script.splitlines()]
+    headline_lines: List[str] = []
+    capture = False
+
+    for line in lines:
+        raw = line.strip()
+
+        if not raw:
+            if capture:
+                break
+            continue
+
+        if (
+            raw.startswith("大標:")
+            or raw.startswith("標:")
+            or raw.startswith("【標】")
+        ):
+            capture = True
+
+            raw = (
+                raw.replace("大標:", "")
+                .replace("標:", "")
+                .replace("【標】", "")
+                .strip()
+            )
+
+            if raw:
+                headline_lines.append(raw)
+
+            continue
+
+        if capture:
+
+            if (
+                raw.startswith("[")
+                or raw.startswith("(")
+                or "PROTECTED BLANK ZONE" in raw
+            ):
+                break
+
+            headline_lines.append(raw)
+
+    return headline_lines
+
+
+def remove_headline_from_script(script: str) -> str:
+
+    lines = script.splitlines()
+
+    result = []
+
+    skip_mode = False
+
+    for line in lines:
+
+        raw = line.strip()
+
+        if (
+            raw.startswith("大標:")
+            or raw.startswith("標:")
+            or raw.startswith("【標】")
+        ):
+
+            skip_mode = True
+            continue
+
+        if skip_mode:
+
+            if (
+                raw.startswith("[")
+                or raw.startswith("(")
+                or raw == ""
+                or "PROTECTED BLANK ZONE" in raw
+            ):
+
+                skip_mode = False
+
+            else:
+                continue
+
+        result.append(line)
+
+    return "\n".join(result).strip()
+
+
+def build_headline_lock(script: str) -> str:
+
+    headline_lines = extract_headline_lines(script)
+
+    if not headline_lines:
+        return ""
+
+    headline_lines = headline_lines[:3]
+
+    if len(headline_lines) == 1:
+
+        return f"""
+[HEADLINE GROUP LOCK v23]
+
+TOP HEADLINE BAND:
+IMMUTABLE OBJECT
+
+HEADLINE_MODE:
+SINGLE_LINE
+
+HEADLINE_LINE_1:
+{headline_lines[0]}
+
+RULES:
+- Headline is immutable
+- Never reflow
+- Never duplicate
+- Never resize independently
+- Never move into body area
+- Never merge with body text
+"""
+
+    block = f"""
+[HEADLINE GROUP LOCK v23]
+
+TOP HEADLINE BAND:
+IMMUTABLE OBJECT
+
+HEADLINE_MODE:
+FORCE_MULTI_LINE
+"""
+
+    for idx, line in enumerate(headline_lines, start=1):
+
+        block += f"""
+
+HEADLINE_LINE_{idx}:
+{line}
+"""
+
+    block += """
+
+RULES:
+- Headline is immutable layout object
+- Never merge lines
+- Never compress into one line
+- Never reflow line structure
+- Never move line 2 or line 3 into body area
+- Never overlap headline lines
+- Preserve exact parser line structure
+- AI must NOT reinterpret headline layout
+- AI must NOT generate new line breaks
+"""
+
+    return block
+
+
+
 def build_director_report(script: str) -> Dict[str, str]:
     frame = auto_detect_frame_type(script)
     subtype = detect_reporter_subtype(script) if frame == "記者說新聞" else "非記者說新聞"
@@ -1164,7 +1323,9 @@ When layout rules conflict, resolve strictly in this order — higher number alw
 """,
         "標大框": """
 [FRAME: 標大框]
-- Top 30-40%: MEGA headline, forced 2-line or 3-line if stronger.
+- Headline structure is PRE-LOCKED by parser.
+- AI must NEVER decide headline line count.
+- Headline already exists as immutable object.
 - Lower area: main image zone plus information modules.
 - Main visual zone must be large and untouched.
 - Suitable for conflict or breaking-style news summaries.
