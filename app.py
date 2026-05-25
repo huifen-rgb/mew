@@ -1323,12 +1323,39 @@ When layout rules conflict, resolve strictly in this order — higher number alw
 """,
         "標大框": """
 [FRAME: 標大框]
-- Headline structure is PRE-LOCKED by parser.
-- AI must NEVER decide headline line count.
-- Headline already exists as immutable object.
-- Lower area: main image zone plus information modules.
-- Main visual zone must be large and untouched.
-- Suitable for conflict or breaking-style news summaries.
+
+HEADLINE BAND:
+- maximum 28% canvas height
+- visually dominant but must not consume lower layout area
+
+PRIMARY ROLL ZONE:
+- dominant visual area
+- largest rectangle on canvas
+- minimum width 42%
+- must remain one complete uninterrupted rectangle
+- visually heavier than all secondary modules
+- NEVER fragment PRIMARY ROLL ZONE
+- right-side preferred
+
+LEFT INFORMATION GROUP:
+- treat all left modules as ONE grouped information cluster
+- subordinate to PRIMARY ROLL ZONE
+- stack vertically with consistent spacing
+
+SECONDARY MODULE LIMIT:
+- maximum 4 secondary modules
+
+LAYOUT HIERARCHY:
+1. HEADLINE BAND
+2. PRIMARY ROLL ZONE
+3. LEFT INFORMATION GROUP
+4. SUPPORTING INFO BLOCKS
+
+AI must avoid:
+- dashboard layout
+- equal-weight grid layout
+- powerpoint-style module distribution
+- fragmented main visual zone
 """,
         "框訊・多圖對比": """
 [FRAME: 框訊・多圖對比]
@@ -1656,6 +1683,27 @@ Never prioritize aesthetics over protected zone integrity.
 {build_zero_assumption_policy(script)}
 - If any image zone and text compete for space, preserve both by reducing spacing, reducing font size, or rearranging modules.
 - Final result must be a professional TV news CG, not a poster, not a webpage.
+
+
+[PRIMARY VISUAL HIERARCHY]
+
+There must be ONE dominant primary visual roll zone.
+
+The primary roll zone:
+- must visually dominate the lower layout
+- must be significantly larger than secondary modules
+- should occupy approximately 45-60% of lower canvas width
+- must remain a single clean rectangle
+- must not be split into multiple boxes
+
+Secondary modules must visually group together as supporting information only.
+
+Avoid:
+- dashboard UI
+- equal-sized boxes
+- fragmented layout
+- powerpoint appearance
+
 
 [CONTENT SCRIPT - CLEANED FOR RENDERING]
 The following text has been pre-processed. All editor markup (【】, [], ()) has been converted to plain render-ready text.
