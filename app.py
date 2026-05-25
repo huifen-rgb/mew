@@ -94,70 +94,125 @@ st.set_page_config(
 # =========================================================
 STYLE_CONFIG: Dict[str, Dict[str, str]] = {
     "民生消費 (Fluid Analytics)": {
-        "theme": "Consumer Lifestyle Trends",
-        "ui": "Organic fluid shapes, Frosted glass panels, Soft depth shadows",
-        "palette": "Soft Beige, Lifestyle Blue",
-        "highlight": "Vibrant Sunburst Orange",
+        "theme": "Premium Consumer Lifestyle & Commercial Trends",
+        "ui": (
+            "Background: clean crisp light-gray to soft-blue studio gradient. "
+            "Cards: elegant frosted-glass rectangular panels with distinct 1px semi-transparent white borders. "
+            "Typography: modern bold corporate sans-serif layout. "
+            "CRITICAL: All panels must respect asset protection zones and the bottom-right hardware ticker safe zone. "
+            "NO organic fluid shapes spilling into blank photo rectangles. Completely delete frame instruction text."
+        ),
+        "palette": "Studio White, Light Slate Blue, Soft Charcoal text",
+        "highlight": "Vibrant Broadcast Sunburst Orange (#ff7a00) for key pricing or numbers",
     },
     "社會案件 (Justice Alert)": {
-        "theme": "Crime Scene Noir",
-        "ui": "CCTV grain textures, High-contrast forensic lighting, Caution tape motifs",
-        "palette": "Concrete Grey, Police Blue",
-        "highlight": "Safety Orange",
+        "theme": "Breaking Crime Scene & Forensic Investigation Board",
+        "ui": (
+            "Background: dark tactical gritty concrete texture with subtle dark navy vignetting. "
+            "Cards: high-contrast forensic evidence rows, sharp rectangles with 2px solid white borders. "
+            "Exhibits: portrait strips for suspects/victims aligned like crime-news mugshots. "
+            "CRITICAL: Visual indicators like location pins or evidence labels must stay OUTSIDE the blank image zones. "
+            "Stamps can overlap card borders but never enter the 100% empty post-production photo placeholders."
+        ),
+        "palette": "Tactical Slate Gray, Heavy Police Blue, Pure White text",
+        "highlight": "High-Visibility Safety Orange (#ff6d00) or Alert Red for charges",
     },
     "體育競技 (Victory Orange)": {
-        "theme": "High-Energy Sports Broadcast",
-        "ui": "Carbon fiber textures, Kinetic speed lines, Stadium spotlights",
-        "palette": "Graphite Grey, Stark White",
-        "highlight": "Electric Orange",
+        "theme": "High-Energy Live Sports Broadcast CG",
+        "ui": (
+            "Background: dark graphite carbon-fiber texture with kinetic linear accents and studio spotlight beams. "
+            "Cards: dynamic angled rectangular plates with sleek borders. "
+            "Typography: heavy-weight athletic block characters with strong drop shadows. "
+            "CRITICAL: Sports stats numbers must be highly readable and anchored strictly within text cards; "
+            "never let athletic decorations cross into empty match footage zones."
+        ),
+        "palette": "Graphite Black, Championship White",
+        "highlight": "Electric Victory Orange (#ff4500) for scores and records",
     },
     "全球財經 (Elite Obsidian)": {
-        "theme": "High-end Financial Dashboard",
-        "ui": "Brushed Aluminum frames, Holographic data streams, Prism glass refractions",
-        "palette": "Deep Navy, Gold",
-        "highlight": "Electric Cyan",
+        "theme": "Premium High-End Financial Infographic Dashboard",
+        "ui": (
+            "Background: deep midnight obsidian blue with minimal holographic data grid lines at 8% opacity. "
+            "Cards: brushed-aluminum structured rows, clean modular spreadsheet rectangles. "
+            "Typography: ultra-crisp numeric layouts with high contrast. "
+            "CRITICAL: Financial charts or trend arrows must be fully contained within data blocks; "
+            "keep a 40px clean buffer from empty video placeholders. Avoid web dashboard elements."
+        ),
+        "palette": "Midnight Obsidian (#0a1118), Steel Gray, Clean White text",
+        "highlight": "Financial Gold (#d4af37) for positive indices, Clear Red for negative indices",
     },
     "突發重磅 (Breaking Alert)": {
-        "theme": "Emergency Alert High-Gloss",
-        "ui": "Radial motion blur, Glossy UI panels with internal red glow",
-        "palette": "Signal Red, Black",
-        "highlight": "Bright Vivid Yellow",
+        "theme": "Breaking News Emergency Alert High-Gloss Studio Template",
+        "ui": (
+            "Background: intense dark vignetted studio background with subtle internal red ambient center glow. "
+            "Cards: massive solid heavy-bordered emergency cards. "
+            "Typography: ultra-bold broadcast-weight Chinese typography with thick black outer strokes. "
+            "CRITICAL: Massive top headline dominance (300% size). "
+            "The bottom-right ticker safety area must remain completely clear of any alert text or cards."
+        ),
+        "palette": "Signal Red (#c0392b), Solid Charcoal Black, Stark White text",
+        "highlight": "Bright Vivid Yellow (#f1c40f) for breaking keywords inside solid dark boxes",
     },
     "選情政論 (Democracy Grey)": {
-        "theme": "Taiwanese Political Broadcast CG — TVBS / CTi / FTV studio style",
+        "theme": "Taiwanese Political Studio Broadcast CG — TVBS / CTi / FTV Style",
         "ui": (
-            "Background: deep blue-gray gradient (#0d1b2e at edges darkening to #1a2d4a at center). Compose the background with these VISIBLE, DISTINCT design elements — each must be clearly rendered: ELEMENT 1 — GEOMETRIC SIDE PANELS: on the far LEFT edge (x=0 to x=80) and far RIGHT edge (x=1840 to x=1920), render tall angular geometric accent strips in #1e3a5f (lighter navy), with a thin bright-blue (#4fc3f7) inner border line — like broadcast studio set side-light panels. ELEMENT 2 — HEX-GRID OVERLAY: a hex-grid or diagonal circuit-board line pattern in #ffffff at 12% opacity, tiled across the full canvas background — gives depth without overpowering content. ELEMENT 3 — CENTER LIGHT BLOOM: a soft radial glow / spotlight bloom in #1e4d8c at 40% opacity, centered at approximately (960, 300) — upper-center of canvas — creating a sense of depth and stage lighting. ELEMENT 4 — BOTTOM ACCENT LINE: a thin 4-6px bright-blue (#4fc3f7) horizontal line at y=1060, spanning the full canvas width — clean broadcast lower-third boundary, NO yellow-black caution tape. These four elements MUST all appear. Do not simplify to a flat color. STRICTLY NO caution tape, NO warning stripes, NO yellow-black diagonal bands — those are for crime news only."
-            "Cards: dark navy (#0a1a35) with 1-2px white or light-blue border lines — no thick gold frames. "
-            "Brush callout boxes: yellow fill (#f5c518) with black bold text — used for key quotes or conflict phrases only. "
-            "Party color coding: KMT/pan-blue = #1565c0; DPP/pan-green = #1b7a3e; TPP/众 = #00b4d8; use party colors ONLY for party-labeled elements. "
-            "NO marble, NO American flag, NO star-and-stripes, NO silver metallic, NO warm beige, NO decorative gold flourishes."
+            "Background: professional deep blue-gray gradient (#0d1b2e at edges to #1a2d4a at center). "
+            "VISIBLE STUDIO ELEMENTS: "
+            "1. GEOMETRIC SIDE PANELS: far left (x=0 to 80) and far right (x=1840 to 1920) feature tall angular navy (#1e3a5f) accent strips with thin bright-blue (#4fc3f7) inner borders. "
+            "2. HEX-GRID OVERLAY: a high-tech hex-grid pattern in #ffffff at 12% opacity tiled across the background. "
+            "3. CENTER LIGHT BLOOM: soft radial spotlight glow in #1e4d8c at 40% opacity centered at upper-canvas (960, 300). "
+            "4. BOTTOM ACCENT LINE: thin 4px bright-blue (#4fc3f7) horizontal boundary line at y=1060. "
+            "CARDS: dark navy (#0a1a35) rectangle boxes with 1-2px clean light-blue borders. "
+            "QUOTES: A single yellow-fill (#f5c518) box with bold black text used ONLY if an explicit brush/stamp tag is provided; otherwise use generic cards. "
+            "PARTY COLORS: KMT pan-blue elements = #1565c0; DPP pan-green elements = #1b7a3e; TPP elements = #00b4d8. Apply party colors ONLY to labeled elements, never to the full background. "
+            "STRICTLY FORBIDDEN: yellow-black diagonal warning stripes, marble textures, American flags, warm beige."
         ),
-        "palette": "Deep Navy (#0d1b2e), Steel Blue (#1a3a6e), White text, Yellow highlight (#f5c518)",
-        "highlight": "Yellow (#f5c518) for emphasis boxes and key numbers; Alert Red (#c0392b) for conflict/warning only; White for body text",
+        "palette": "Deep Navy Gray (#0d1b2e), Broadcast Steel Blue (#1a3a6e), White body text",
+        "highlight": "Broadcast Yellow (#f5c518) for key quotes or targeted numeric emphasis",
     },
     "科技政策 (Cyber Policy)": {
-        "theme": "Digital Policy & Tech Hub",
-        "ui": "Poly-grid overlays, Ray-traced glass, Semi-transparent data nodes",
-        "palette": "Steel Blue, Silver",
-        "highlight": "Neon Cyan",
+        "theme": "Digital Innovation & Cyber Infrastructure Policy",
+        "ui": (
+            "Background: sleek dark steel-blue base with subtle poly-grid node lines at 10% opacity. "
+            "Cards: precision semi-transparent matrix panels with razor-thin light blue outlines. "
+            "Typography: highly legible clean modern sans-serif. "
+            "CRITICAL: Tech nodes or network lines must not interconnect through blank post-production photo zones."
+        ),
+        "palette": "Dark Cyber Steel (#121921), Matte Silver",
+        "highlight": "Neon Cyan (#00f5ff) for tech keywords or data nodes",
     },
     "綠能永續 (Eco-Future)": {
-        "theme": "Sustainability & ESG Focus",
-        "ui": "Natural leaf vein textures, Soft outdoor bokeh, Organic glass panels",
-        "palette": "Emerald Green, Leaf Green",
-        "highlight": "Sunlight Gold",
+        "theme": "Sustainability, ESG Trends & Environmental Public Policy",
+        "ui": (
+            "Background: calm dark-charcoal to organic emerald-vignette studio backdrop. "
+            "Cards: clean sustainable modular panels, structured rows with soft depth shadows. "
+            "Typography: clear environmental broadcast font layout. "
+            "CRITICAL: Respect all asset protection zones; green graphic elements must never contaminate empty photo boxes."
+        ),
+        "palette": "Deep Charcoal, Sustainable Emerald Green (#0f5132), White text",
+        "highlight": "Sunlight Eco-Gold (#ffc107) for milestones and ratings",
     },
     "現代民俗 (Modern Festive)": {
-        "theme": "Modern Folk Aesthetic",
-        "ui": "Lacquered wood finish, Silk textures, Traditional cloud patterns",
-        "palette": "Vermilion Red, Deep Charcoal",
-        "highlight": "Imperial Gold",
+        "theme": "Modern Cultural Folk, Festival Broadcast & Local Tradition",
+        "ui": (
+            "Background: rich deep charcoal lacquer finish with elegant dark vermilion gradients in the corners. "
+            "Cards: solid rectangular structured plates with clean gold-threaded 1px margins. "
+            "Typography: high-contrast authoritative broadcast font. "
+            "CRITICAL: Traditional motifs must be pushed to the canvas edges; they are strictly forbidden from entering empty video/photo fields."
+        ),
+        "palette": "Rich Vermilion Red (#9e1c1c), Deep Obsidian Charcoal",
+        "highlight": "Imperial Gold (#e5a93b) for key dates or cultural headings",
     },
     "生醫科技 (Clinical White)": {
-        "theme": "Medical Innovation",
-        "ui": "Sanitized surfaces, DNA helix motifs, Hexagonal laboratory grids",
-        "palette": "Pristine White, Navy Blue",
-        "highlight": "Bright Sky Blue",
+        "theme": "Medical Innovation, Healthcare Reports & Laboratory Analytics",
+        "ui": (
+            "Background: ultra-clean high-contrast clinical light-gray to soft sterile-blue gradient. "
+            "Cards: pristine structured white rectangular grids with clear steel-blue dividers. "
+            "Typography: professional high-readability scientific text layout. "
+            "CRITICAL: Keep massive contrast between text and background. No laboratory graphics may touch empty video windows."
+        ),
+        "palette": "Pristine Light Gray (#f8f9fa), Clinical Steel Navy, Dark Charcoal text",
+        "highlight": "Bright Medical Sky Blue (#00a2ff) for core metrics and data points",
     },
 }
 
@@ -260,10 +315,6 @@ def is_asset_protection_tag(tag: str) -> bool:
     if not tag:
         return False
     t = tag.strip()
-
-    # 帶 + 前綴的一定是模組指令（如 (+色塊壓xxx圖框下) / (+筆刷字) / (+對話框)），不是圖區
-    if re.match(r'^\([+＋]', t):
-        return False
 
     # [圖] / [圖-左] / [圖-右] / [圖-xxx]
     if t.startswith("[圖"):
@@ -599,165 +650,6 @@ def auto_patch_missing_image_zones(script: str, frame_type: str) -> str:
     if frame_type == "框訊・多圖對比":
         return cleaned + NL + NL + "[圖-左主]" + NL + "（主畫面 / 後製真實圖）"
     return cleaned
-
-
-
-# =========================================================
-# v23 HEADLINE IMMUTABLE OBJECT LOCK
-# =========================================================
-
-def extract_headline_lines(script: str) -> List[str]:
-    lines = [x.rstrip() for x in script.splitlines()]
-    headline_lines: List[str] = []
-    capture = False
-
-    for line in lines:
-        raw = line.strip()
-
-        if not raw:
-            if capture:
-                break
-            continue
-
-        if (
-            raw.startswith("大標:")
-            or raw.startswith("標:")
-            or raw.startswith("【標】")
-        ):
-            capture = True
-
-            raw = (
-                raw.replace("大標:", "")
-                .replace("標:", "")
-                .replace("【標】", "")
-                .strip()
-            )
-
-            if raw:
-                headline_lines.append(raw)
-
-            continue
-
-        if capture:
-
-            if (
-                raw.startswith("[")
-                or raw.startswith("(")
-                or "PROTECTED BLANK ZONE" in raw
-            ):
-                break
-
-            headline_lines.append(raw)
-
-    return headline_lines
-
-
-def remove_headline_from_script(script: str) -> str:
-
-    lines = script.splitlines()
-
-    result = []
-
-    skip_mode = False
-
-    for line in lines:
-
-        raw = line.strip()
-
-        if (
-            raw.startswith("大標:")
-            or raw.startswith("標:")
-            or raw.startswith("【標】")
-        ):
-
-            skip_mode = True
-            continue
-
-        if skip_mode:
-
-            if (
-                raw.startswith("[")
-                or raw.startswith("(")
-                or raw == ""
-                or "PROTECTED BLANK ZONE" in raw
-            ):
-
-                skip_mode = False
-
-            else:
-                continue
-
-        result.append(line)
-
-    return "\n".join(result).strip()
-
-
-def build_headline_lock(script: str) -> str:
-
-    headline_lines = extract_headline_lines(script)
-
-    if not headline_lines:
-        return ""
-
-    headline_lines = headline_lines[:3]
-
-    if len(headline_lines) == 1:
-
-        return f"""
-[HEADLINE GROUP LOCK v23]
-
-TOP HEADLINE BAND:
-IMMUTABLE OBJECT
-
-HEADLINE_MODE:
-SINGLE_LINE
-
-HEADLINE_LINE_1:
-{headline_lines[0]}
-
-RULES:
-- Headline is immutable
-- Never reflow
-- Never duplicate
-- Never resize independently
-- Never move into body area
-- Never merge with body text
-"""
-
-    block = f"""
-[HEADLINE GROUP LOCK v23]
-
-TOP HEADLINE BAND:
-IMMUTABLE OBJECT
-
-HEADLINE_MODE:
-FORCE_MULTI_LINE
-"""
-
-    for idx, line in enumerate(headline_lines, start=1):
-
-        block += f"""
-
-HEADLINE_LINE_{idx}:
-{line}
-"""
-
-    block += """
-
-RULES:
-- Headline is immutable layout object
-- Never merge lines
-- Never compress into one line
-- Never reflow line structure
-- Never move line 2 or line 3 into body area
-- Never overlap headline lines
-- Preserve exact parser line structure
-- AI must NOT reinterpret headline layout
-- AI must NOT generate new line breaks
-"""
-
-    return block
-
 
 
 def build_director_report(script: str) -> Dict[str, str]:
@@ -1141,7 +1033,13 @@ def parse_user_script(script: str) -> ParsedInput:
 
     title = ""
 
-    for key in ["大標：", "大標:", "大標=", "標題：", "標題:", "標題=", "標：", "標:", "標="]:
+    for key in [
+        "主標：", "主標:", "主標=",
+        "大標：", "大標:", "大標=",
+        "大標題：", "大標題:", "大標題=",
+        "標題：", "標題:", "標題=",
+        "標：", "標:", "標=",
+    ]:
 
         if key in script:
 
@@ -1323,43 +1221,17 @@ When layout rules conflict, resolve strictly in this order — higher number alw
 """,
         "標大框": """
 [FRAME: 標大框]
-
-HEADLINE BAND:
-- maximum 28% canvas height
-- visually dominant but must not consume lower layout area
-
-PRIMARY ROLL ZONE:
-- dominant visual area
-- largest rectangle on canvas
-- minimum width 42%
-- must remain one complete uninterrupted rectangle
-- visually heavier than all secondary modules
-- NEVER fragment PRIMARY ROLL ZONE
-- right-side preferred
-
-LEFT INFORMATION GROUP:
-- treat all left modules as ONE grouped information cluster
-- subordinate to PRIMARY ROLL ZONE
-- stack vertically with consistent spacing
-
-SECONDARY MODULE LIMIT:
-- maximum 4 secondary modules
-
-LAYOUT HIERARCHY:
-1. HEADLINE BAND
-2. PRIMARY ROLL ZONE
-3. LEFT INFORMATION GROUP
-4. SUPPORTING INFO BLOCKS
-
-AI must avoid:
-- dashboard layout
-- equal-weight grid layout
-- powerpoint-style module distribution
-- fragmented main visual zone
+- Top 40-48%: MEGA headline wall; headline is a visual object, not a normal text box.
+- Force true two-line or three-line headline when headline_mode requests it; never squeeze into one long line.
+- Use Taiwanese TV impact typography: yellow/white/red keywords, thick black stroke, hard shadow, compressed block characters.
+- Lower area: large main ROLL/VCR zone plus conflict/evidence/quote modules wrapping around it.
+- Main ROLL/VCR zone must be large, black/dark, untouched, and visually dominant when present.
+- Suitable for political war-room, crime board, disaster wall, and breaking conflict summaries.
 """,
         "框訊・多圖對比": """
 [FRAME: 框訊・多圖對比]
 - Top: mega headline.
+- Core: comparison logic first, not equal grid. Keep a large right/center-right black ROLL if requested.
 - Upper row: multiple real-material image zones, such as construction, documents, people.
 - Left/lower: main image hole if present.
 - Right/lower: quote, price difference, investigation or explanation blocks.
@@ -1369,6 +1241,7 @@ AI must avoid:
         "框訊・對打時間軸": """
 [FRAME: 框訊・對打時間軸]
 - Top: headline with opposing keywords.
+- Core: political/crime argument field; left explanation and bottom timeline can be dense, right ROLL remains dominant if present.
 - Upper/lateral: two-person debate or attack/response zones.
 - Main ROLL/video zone usually on the right and must stay empty.
 - Bottom: timeline/event images arranged in equal-width blocks.
@@ -1377,6 +1250,7 @@ AI must avoid:
         "框訊・數據分析": """
 [FRAME: 框訊・數據分析]
 - Main body is data hierarchy, not image hierarchy.
+- Use Taiwanese anchor-explainer cards, not a corporate dashboard.
 - Use clear data cards, stacked rows, and strong numerical emphasis.
 - Person image, if any, is secondary and protected.
 - Left side: event/narrative data. Right side: expert quote and conclusion data.
@@ -1384,6 +1258,7 @@ AI must avoid:
         "框訊・流程關係": """
 [FRAME: 框訊・流程關係]
 - Top: strong conflict headline.
+- Core: investigation board / relationship wall; preserve reading order and protected media zones.
 - Left side: relationship diagram with role group and branch nodes.
 - Right side: main image/ROLL protected zone.
 - Use connector lines from role icons to relationship nodes.
@@ -1408,6 +1283,76 @@ Detected Modules:
 """.strip()
 
 
+
+# =========================================================
+# v23：台灣新聞標大框 / 框訊語法引擎
+# =========================================================
+def detect_taiwan_news_cg_intent(script: str, frame_type: str) -> str:
+    """把使用者新聞稿轉成更貼近台灣新聞台的構圖意圖。"""
+    s = script or ""
+    if frame_type == "標大框":
+        if _contains_any(s, ["馬英九", "基金會", "立院", "總統", "黨", "議員", "市長", "政論", "攻防", "痛批", "爆氣", "護", "轟", "包庇"]):
+            return "標大框・政論戰情型"
+        if _contains_any(s, ["偷拍", "毒駕", "性騷", "慣犯", "嫌犯", "聲押", "羈押", "偵辦", "警方", "法院", "檢方"]):
+            return "標大框・刑案衝突型"
+        if _contains_any(s, ["爆炸", "槍擊", "火災", "煤礦", "落海", "墜樓", "死亡", "重傷", "搜救", "災", "罹難"]):
+            return "標大框・災難速報型"
+        if _contains_any(s, ["3/", "4/", "5/", "時間軸", "上午", "下午", "宣告", "獲報", "送醫"]):
+            return "標大框・時間軸爆料型"
+        return "標大框・情緒主標型"
+
+    if frame_type.startswith("框訊") or frame_type == "框訊":
+        if _contains_any(s, ["時間", "上午", "下午", "晚間", "宣告", "獲報", "送醫", "5/", "3/", "4/"]):
+            return "框訊・事件時間軸拆解"
+        if _contains_any(s, ["法條", "法院", "刑法", "修法", "草案", "條文", "罰", "年金", "給付", "立院"]):
+            return "框訊・法規政策拆解"
+        if _contains_any(s, ["毒駕", "偷拍", "詐騙", "嫌犯", "警方", "檢方", "聲押", "羈押", "報案"]):
+            return "框訊・刑案分析牆"
+        if _contains_any(s, ["落海", "離岸流", "消波塊", "搜救", "危險水域", "溺斃", "墜樓", "火鍋", "車禍"]):
+            return "框訊・災難事故拆解"
+        if _contains_any(s, ["馬英九", "基金會", "總統", "政論", "聲明", "質疑", "駁斥", "攻防"]):
+            return "框訊・政論攻防拆解"
+        return "框訊・主播資訊拆解"
+
+    return "一般新聞CG"
+
+
+def build_taiwan_news_cg_grammar(script: str, frame_type: str) -> str:
+    """把參考圖的台灣新聞台視覺語法寫進 prompt，讓模型不要做成乾淨 dashboard。"""
+    intent = detect_taiwan_news_cg_intent(script, frame_type)
+    if frame_type == "標大框":
+        return f"""
+[TAIWANESE NEWS CG GRAMMAR v23｜標大框]
+Detected intent: {intent}
+This is NOT a clean infographic and NOT a website/dashboard.
+標大框的核心是「情緒型主標牆」：headline is a visual object, not a normal text box.
+- Top 40-48% may be occupied by the mega headline wall.
+- Use huge compressed Taiwanese TV typography, thick black outer stroke, white/yellow/red emphasis, hard shadows, impact blocks, and keyword collision.
+- Shock/emotion words such as 爆、轟、控、涉、死、傷、包庇、質疑、慣犯、爆氣、痛批 can become larger than grammar order suggests.
+- Body modules must yield to headline dominance.
+- Use tension-field composition: elements can push, collide, and wrap around the main ROLL, but must remain readable.
+- Prefer Taiwanese TV news war-room / crime-board / disaster-wall feeling over clean corporate infographic.
+-人物／肖像素材若有，應形成左右包邊或證據牆構圖；不要只做成普通等距白框。
+- Main ROLL/VCR/video hole is absolute: keep a large black or very dark empty window, usually right or center-right, with clean border. It must dominate the lower visual area when requested.
+- Never fill the main ROLL with text, icons, decorative pattern, labels, fake screenshots, or generated images.
+""".strip()
+
+    if frame_type.startswith("框訊") or frame_type == "框訊":
+        return f"""
+[TAIWANESE NEWS CG GRAMMAR v23｜框訊]
+Detected intent: {intent}
+框訊的核心不是平均排版，而是「事件拆解 + 導播預留 + 觀眾理解動線」。
+- Use left-side editorial explanation / right-side large ROLL/VCR or future footage whenever a main roll exists.
+- Build an information flow, not a symmetric dashboard: headline → time/event → cause/action → consequence → evidence/quote → ROLL.
+- High-density text must use newsroom compression: tight stacked cards, red/yellow keyword emphasis, small date/time tags, warning bands, evidence cards, law/stat boxes, and callout arrows only when useful.
+- Right ROLL/VCR window should usually be large black/dark empty rectangle, not white, not labeled, not filled.
+- 左側資訊區可高密度，但要分群：時間軸、案情、法規、數據、人物說法、地點危險點，各自成卡。
+- 框訊要像主播正在講解的棚內圖卡，不是歐美 BI dashboard、不是網站、不是社群貼文。
+- If the script includes many modules, preserve editorial reading order instead of forcing equal grids.
+""".strip()
+
+    return "[TAIWANESE NEWS CG GRAMMAR v23]\nUse professional Taiwanese TV news CG grammar."
+
 def sanitize_script_for_image_model(script: str) -> str:
     """
     把編輯語法轉成圖像模型能直接執行的乾淨指令。
@@ -1428,6 +1373,12 @@ def sanitize_script_for_image_model(script: str) -> str:
 
     # 1. 欄位前綴字
     text = re.sub(r'【標[題]?】|【大標[題]?】|【小標[題]?】', '', text)
+    # 1b. 整行的標題前綴 — 移除前綴，保留後面的標題文字
+    # 涵蓋所有變體：大標= / 大標: / 大標：/ 大標（無符號）/ 主標= / 主標: / 主標：/ 標= / 標: / 標：
+    text = re.sub(
+        r'^(?:主標題?|大標題?|標題?)[=:：＝]\s*',
+        '', text, flags=re.MULTILINE
+    )
 
     # 預處理 0：清除純位置提示括號 (左邊) / (右邊) 等
     # 注意：只清除後面緊接著另一個括號的純位置 tag，例如 (左邊)(ROLL) → (ROLL)
@@ -1462,7 +1413,9 @@ def sanitize_script_for_image_model(script: str) -> str:
         # 原始標籤（如 (定圖 俗女) / (#右下ROLL) / (+襯底圖 金德興)）傳給模型會被當作
         # 說明文字印在圖框內，造成 EMPTY / 定圖 俗女 等標籤出現在成品上。
         if is_asset_protection_tag(raw):
-            return "[PROTECTED BLANK ZONE — render as 100% visually empty white rectangle, absolutely no text, no label, no icon, no decoration inside]"
+            if re.search(r'ROLL|roll|VCR|vcr|開框', raw, flags=re.IGNORECASE):
+                return "[PROTECTED BLACK ROLL ZONE — render as a 100% visually empty black/dark video window with clean broadcast frame, absolutely no text, no label, no icon, no decoration inside]"
+            return "[PROTECTED BLANK ZONE — render as 100% visually empty white/light neutral rectangle, absolutely no text, no label, no icon, no decoration inside]"
 
         # 3. 效果標籤（筆刷 / 蓋章）→ 原封不動
         if re.search(r'[#＃]?(?:筆刷|蓋章)', inner):
@@ -1615,6 +1568,8 @@ Layout mode: {layout_mode}
 
 {build_visual_token_compiler_block(script, frame_type, headline_mode)}
 
+{build_taiwan_news_cg_grammar(script, frame_type)}
+
 [PROTECTED PHOTO ZONE｜ABSOLUTE]
 
 Detected image / roll zones are HARD EMPTY SAFE ZONES.
@@ -1684,35 +1639,16 @@ Never prioritize aesthetics over protected zone integrity.
 - If any image zone and text compete for space, preserve both by reducing spacing, reducing font size, or rearranging modules.
 - Final result must be a professional TV news CG, not a poster, not a webpage.
 
-
-[PRIMARY VISUAL HIERARCHY]
-
-There must be ONE dominant primary visual roll zone.
-
-The primary roll zone:
-- must visually dominate the lower layout
-- must be significantly larger than secondary modules
-- should occupy approximately 45-60% of lower canvas width
-- must remain a single clean rectangle
-- must not be split into multiple boxes
-
-Secondary modules must visually group together as supporting information only.
-
-Avoid:
-- dashboard UI
-- equal-sized boxes
-- fragmented layout
-- powerpoint appearance
-
-
 [CONTENT SCRIPT - CLEANED FOR RENDERING]
 The following text has been pre-processed. All editor markup (【】, [], ()) has been converted to plain render-ready text.
 CRITICAL OVERRIDE — IMAGE ZONE LINES:
-Any line that reads "[PROTECTED BLANK ZONE — render as 100% visually empty white rectangle, absolutely no text, no label, no icon, no decoration inside]"
+Any line that reads "[PROTECTED BLANK ZONE — render as 100% visually empty white/light neutral rectangle, absolutely no text, no label, no icon, no decoration inside]"
 means: draw a clean white or near-white empty rectangle at that layout position.
+Any line that reads "[PROTECTED BLACK ROLL ZONE — render as a 100% visually empty black/dark video window with clean broadcast frame, absolutely no text, no label, no icon, no decoration inside]"
+means: draw a large clean black/dark ROLL/VCR window with broadcast frame at that layout position.
 Zero text. Zero label. Zero icon. Zero decoration. Completely blank.
-Do NOT print the words "PROTECTED BLANK ZONE" or any part of that instruction.
-The correct output for that zone is a visually empty rectangle.
+Do NOT print the words "PROTECTED BLANK ZONE", "PROTECTED BLACK ROLL ZONE" or any part of those instructions.
+The correct output for these zones is a visually empty rectangle/window.
 {sanitize_script_for_image_model(script)}
 
 [DIRECTOR NOTES]
@@ -1953,8 +1889,8 @@ def _asset_zone_spatial_hint(tag: str, index: int, total: int, frame_type: str) 
                 "blank interior reserved for real footage insertion"
             )
         return (
-            "a large main ROLL/photo area in the left or lower-left visual zone, "
-            "blank interior reserved for real footage insertion"
+            "a large dominant main ROLL/VCR footage window, usually on the right or center-right like Taiwanese TV news CG, "
+            "solid black/dark empty interior with a subtle broadcast metallic frame, reserved for real footage insertion"
         )
 
     if any(k in tag for k in ["簽約", "合約", "文件", "文書", "書面"]):
@@ -1991,9 +1927,9 @@ def build_visual_token_compiler_block(script: str, frame_type: str, headline_mod
         clean_lines: List[str] = []
         for line in block:
             stripped = line.strip()
-            if stripped == parsed.title.strip() or stripped.startswith(("標:", "標=", "大標:", "大標=", "標題:", "標題=")):
+            if stripped == parsed.title.strip() or stripped.startswith(("主標:", "主標=", "主標：", "標:", "標=", "大標:", "大標=", "大標：", "標題:", "標題=")):
                 continue
-            if stripped.startswith(("大標：", "標題：", "標：")):
+            if stripped.startswith(("主標題：", "主標題:", "大標題：", "大標題:", "標題：")):
                 continue
             if is_asset_protection_tag(stripped):
                 continue
@@ -2056,12 +1992,15 @@ def build_visual_token_compiler_block(script: str, frame_type: str, headline_mod
         if roll_position:
             pos_text = f"on the {roll_position} side of the canvas, "
         else:
-            pos_text = "positioned according to the overall layout (no explicit position was specified), "
+            if frame_type == "標大框" or frame_type.startswith("框訊") or frame_type == "框訊":
+                pos_text = "usually on the right or center-right side of the canvas, "
+            else:
+                pos_text = "positioned according to the overall layout (no explicit position was specified), "
         visual_zone_lines.append(
             f"- MAIN ROLL/FOOTAGE ZONE (MANDATORY — must appear in final image): "
-            f"a large blank white rectangle {pos_text}"
-            f"occupying at least 35-40% of canvas width and most of the lower height. "
-            f"This zone is REQUIRED. Do NOT omit it. Interior must be 100% blank white — no text, no icon, no label."
+            f"a large black/dark empty ROLL/VCR video window {pos_text}"
+            f"occupying at least 35-45% of canvas width and most of the lower height. "
+            f"This zone is REQUIRED. Do NOT omit it. Interior must be 100% blank black/dark — no text, no icon, no label, no fake image."
         )
     for tag in document_tags:
         visual_zone_lines.append(f"- Document/evidence zone: {_asset_zone_spatial_hint(tag, 0, len(asset_zones), frame_type)}")
@@ -2291,7 +2230,7 @@ Newsroom post-production blank image zones requested by the user:
 {zone_list}
 For each requested image/photo/video/document marker, reserve a clean blank area in the CG layout.
 These areas are for real post-production material, not AI-generated content.
-Interior must be {fill_style}.
+Interior must be {fill_style}; however ROLL/VCR/開框 zones should be rendered as black/dark empty video windows with a clean broadcast frame.
 No fake photos, no fake screenshots, no icons, no labels, no text, no stamps, no brush strokes, no arrows, no decorations inside.
 Keep at least 40px clean safety buffer around every blank image zone.
 Do not render marker words such as 定圖, 圖片, 開框roll, 外觀照, LINE截圖.
@@ -2393,6 +2332,8 @@ Professional Taiwanese TV news CG, 1920x1080 horizontal 16:9, polished broadcast
 {senior_news_cg_policy}
 
 {visual_compiler}
+
+{build_taiwan_news_cg_grammar(script, frame_type)}
 
 Layout intent: {_frame_visual_intent(frame_type, reporter_subtype, headline_mode)}.
 Headline area: {headline_mode}; title meaning reference only: {title or 'news headline'}.
