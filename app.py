@@ -1192,6 +1192,7 @@ def parse_editor_slots_v242(script: str) -> List[Dict[str, str]]:
         line = raw.strip()
         if not line:
             continue
+        # 圓括號語法
         for m in re.finditer(r"\(([^)]*)\)", line):
             label = m.group(0)
             inner = m.group(1).strip()
@@ -1204,6 +1205,9 @@ def parse_editor_slots_v242(script: str) -> List[Dict[str, str]]:
                 tokens.append({"type": "info_card", "label": label})
             elif "箭頭" in inner:
                 tokens.append({"type": "flow_arrow", "label": label})
+        # 尖括號定圖語法 <定圖 xxx>
+        for m in re.finditer(r'<\s*定圖([^>]*?)>', line):
+            tokens.append({"type": "image_slot", "label": f"<定圖{m.group(1).strip()}>"})
     # 去重
     seen = set(); out=[]
     for t in tokens:
@@ -1599,6 +1603,28 @@ def sanitize_script_for_image_model(script: str) -> str:
         cleaned_lines_pre.append(raw_line)
     text = "\n".join(cleaned_lines_pre)
 
+    # 0a2. 尖括號特殊語法轉換 — 必須在 step 8 清除尖括號之前處理
+    # 優先序：定圖 > 效果標籤 > 色塊模組 > 其他（變色強調，由 step 8 清符號）
+    def _replace_angle_bracket(m: re.Match) -> str:
+        inner = m.group(1).strip()
+        # 1. <定圖 xxx> → (定圖xxx)
+        if inner.startswith("定圖"):
+            rest = inner[2:].strip()
+            return f"(定圖{rest})" if rest else "(定圖)"
+        # 2. <蓋章效果> / <蓋章> → (蓋章效果)
+        if inner in ("蓋章效果", "蓋章"):
+            return "(蓋章效果)"
+        # 3. <筆刷效果> / <筆刷> → (筆刷效果)
+        if inner in ("筆刷效果", "筆刷"):
+            return "(筆刷效果)"
+        # 4. <色塊> / <色塊N> / <色塊xxx> → COLOR BLOCK MODULE 指令
+        if re.match(r'^色塊\d*$', inner) or inner == "色塊":
+            return "§CARDSTART§"
+        # 5. 其他 → 保留尖括號讓 step 8 處理（變色強調，符號刪除）
+        return m.group(0)
+
+    text = re.sub(r'<([^<>]+)>', _replace_angle_bracket, text)
+
     # 0b. 括號不對稱容錯：[xxx) 或 (xxx] → 統一修正為 [xxx] 或 (xxx)
     # 例：[打卡LOGO)高雄阿蓮區 → [打卡LOGO]高雄阿蓮區
     text = re.sub(r'\[([^\]\)]*)\)', r'[\1]', text)
@@ -1609,25 +1635,44 @@ def sanitize_script_for_image_model(script: str) -> str:
         full = m.group(0)  # 例：[日曆效果---5/26]
         inner = re.sub(r'^\[日曆效果', '', full).rstrip(']').strip()
         date_str = re.sub(r'^[-—=\s]+', '', inner).strip()
+        # 清掉日期字串裡的括號
+        date_str = re.sub(r'[（(）)]', '', date_str).strip()
         if date_str:
-            return f"[CALENDAR ICON: {date_str}]"
-        return "[CALENDAR ICON]"
+            return f"calendar icon with date {date_str}"
+        return "calendar icon"
     text = re.sub(r'\[日曆效果[^\]]*\]', _replace_calendar, text)
 
     # 0d. [以下文字做色塊] / [以下做色塊] → 轉成色塊模組指令
     text = re.sub(
         r'\[以下(?:文字)?做色塊[^\]]*\]',
-        '[COLOR BLOCK MODULE — render the following text lines as a color block information card]',
+        '§CARDSTART§',
         text
     )
 
     # 1. 欄位前綴字
     text = re.sub(r'【標[題]?】|【大標[題]?】|【小標[題]?】', '', text)
     # 1b. 整行的標題前綴 — 移除前綴，保留後面的標題文字
-    # 涵蓋所有變體：大標= / 大標: / 大標：/ 大標（無符號）/ 主標= / 主標: / 主標：/ 標= / 標: / 標：
     text = re.sub(
         r'^(?:主標題?|大標題?|標題?)[=:：＝]\s*',
         '', text, flags=re.MULTILINE
+    )
+    # 1c. 欄位指定整行（單獨成行的 左: 右: 中: 左邊: 右邊: 等）→ 整行移除
+    # 這些只是版面指令，不應該出現在成品上
+    # 但 左=ROLL / 右=ROLL 這類含圖區的不移除，交由後面的圖區解析處理
+    text = re.sub(
+        r'^(?:左邊?|右邊?|中間?|上方?|下方?|左上|左下|右上|右下)[=:：＝]\s*$',
+        '', text, flags=re.MULTILINE
+    )
+    # 1d. 左=ROLL / 右=ROLL / 左:ROLL 等 → 轉成欄位指定 + ROLL 圖區語法
+    def _replace_col_roll(m: re.Match) -> str:
+        col = m.group(1).strip()
+        col_map = {"左": "left", "右": "right", "中": "center",
+                   "左邊": "left", "右邊": "right", "中間": "center"}
+        col_en = col_map.get(col, col)
+        return f"[{col_en.upper()} ROLL zone — large black/dark empty video window on the {col_en} side]"
+    text = re.sub(
+        r'^(左邊?|右邊?|中間?)[=:：＝]\s*(?:ROLL|roll|Roll|VCR|vcr)\s*$',
+        _replace_col_roll, text, flags=re.MULTILINE
     )
 
     # 預處理 0：清除純位置提示括號 (左邊) / (右邊) 等
@@ -1671,6 +1716,10 @@ def sanitize_script_for_image_model(script: str) -> str:
         if re.search(r'[#＃]?(?:筆刷|蓋章)', inner):
             return raw
 
+        # 3d. 打勾 → ✓ 符號
+        if inner.strip() in ("打勾", "勾"):
+            return "✓"
+
         # 4. (#打卡) / (#打卡 地名) → location pin icon，貼 ROLL 框上緣
         if re.search(r'[#＃]?打卡', inner):
             loc = re.sub(r'[#＃]?打卡\s*', '', inner).strip()
@@ -1702,16 +1751,29 @@ def sanitize_script_for_image_model(script: str) -> str:
     def _replace_square(m: re.Match) -> str:
         inner_s = m.group(1)
         # 已轉換的特殊指令保留原樣
-        if inner_s.startswith("CALENDAR ICON") or inner_s.startswith("COLOR BLOCK MODULE"):
+        if inner_s.startswith("CALENDAR ICON") or inner_s.startswith("COLOR BLOCK MODULE") or inner_s.startswith("calendar icon") or inner_s.startswith("§CARDSTART§"):
             return m.group(0)
         if is_asset_protection_tag(f"[{inner_s}]"):
             return m.group(0)
+        # [打卡xxx] / [打卡LOGO] → 地圖釘指令（地名在括號後面，由下方 re.sub 一起處理）
+        if inner_s.startswith("打卡"):
+            return "§LOCATION_PIN§"
         return inner_s
 
     text = re.sub(r'\[([^\]]+)\]', _replace_square, text)
+    # 把 §LOCATION_PIN§ 後面緊接的地名一起轉成 location pin icon 指令
+    text = re.sub(
+        r'§LOCATION_PIN§\s*([\u4e00-\u9fff\w]{1,20})',
+        lambda m: f"location pin icon {m.group(1).strip()}",
+        text
+    )
+    # 沒有地名的孤立標記也清掉
+    text = text.replace("§LOCATION_PIN§", "location pin icon")
 
-    # 8. 移除雙引號符號（保留內文）
+    # 8. 移除雙引號和尖括號符號（保留內文）
     text = re.sub(r'["\u201c\u201d\u300c\u300d\u300e\u300f]', '', text)
+    # 清掉剩餘的尖括號（<xxx> 已在 0a2 轉換，剩下的是變色強調符號）
+    text = text.replace('<', '').replace('>', '')
 
     # 9. vs. 統一格式
     text = re.sub(r'\s*[Vv][Vs]\.?\s*', ' vs. ', text)
@@ -2168,9 +2230,16 @@ Violation of this rule destroys the broadcast layout.
 # v20.5 CG Prompt Translator：把導演規格轉成 Gemini Image 看得懂的乾淨影像 prompt
 # =========================================================
 def _extract_asset_zones(script: str) -> List[str]:
-    """抓出所有素材保護區語法：(#定圖)、(圖片)、(定國防部外觀照)、[圖-右主]、(#開框roll) 等。"""
+    """抓出所有素材保護區語法：(#定圖)、(圖片)、(定國防部外觀照)、[圖-右主]、(#開框roll)、<定圖 xxx> 等。"""
     if not script:
         return []
+    # 先把 <定圖 xxx> 轉成 (定圖xxx) 再解析
+    import re as _re
+    script = _re.sub(
+        r'<\s*定圖([^>]*?)>',
+        lambda m: f'(定圖{m.group(1).strip()})' if m.group(1).strip() else '(定圖)',
+        script
+    )
     tags = _collect_square_tags(script) + _collect_parenthesis_tags(script)
     zones = [tag.strip() for tag in tags if is_asset_protection_tag(tag)]
     return list(dict.fromkeys([z for z in zones if z]))
@@ -2523,7 +2592,13 @@ def build_visual_token_compiler_block(script: str, frame_type: str, headline_mod
             f"Name label '{_pname}' goes BELOW or BESIDE this zone, never inside. Interior must be 100% blank."
         )
     for i, tag in enumerate(other_tags, start=1):
-        visual_zone_lines.append(f"- Editorial image zone {i}: {_asset_zone_spatial_hint(tag, i, len(asset_zones), frame_type)}")
+        hint = _asset_zone_spatial_hint(tag, i, len(asset_zones), frame_type)
+        visual_zone_lines.append(
+            f"- Blank zone {i} (post-production photo/media): {hint}. "
+            f"Render as AXIS-ALIGNED white/light-gray empty rectangle. "
+            f"Interior: ZERO content — no text, no label, no icon, no fake photo. "
+            f"Editor will insert real photo here after generation."
+        )
 
     if not visual_zone_lines:
         if frame_type != "記者說新聞":
