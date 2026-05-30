@@ -99,11 +99,11 @@ st.set_page_config(
 # =========================================================
 STYLE_CONFIG: Dict[str, Dict[str, str]] = {
     "民生消費 (Fluid Analytics)": {
-        "theme": "Premium Consumer Lifestyle & Commercial Trends",
+        "theme": "Taiwan TV Consumer News, Price Watch & Public-Service Explainer",
         "ui": (
-            "Background: clean crisp light-gray to soft-blue studio gradient. "
-            "Cards: elegant frosted-glass rectangular panels with distinct 1px semi-transparent white borders. "
-            "Typography: modern bold corporate sans-serif layout. "
+            "Background: bright but solid Taiwanese consumer-news studio texture, using clean blue/white/orange broadcast panels rather than pale glass UI. "
+            "Cards: hard-edged rectangular news panels with clear borders, high contrast, and readable hierarchy. "
+            "Typography: bold Taiwanese TV news typography, not corporate SaaS UI. "
             "CRITICAL: All panels must respect asset protection zones and the bottom-right hardware ticker safe zone. "
             "NO organic fluid shapes spilling into blank photo rectangles. Completely delete frame instruction text."
         ),
@@ -111,7 +111,7 @@ STYLE_CONFIG: Dict[str, Dict[str, str]] = {
         "highlight": "Vibrant Broadcast Sunburst Orange (#ff7a00) for key pricing or numbers",
     },
     "社會案件 (Justice Alert)": {
-        "theme": "Breaking Crime Scene & Forensic Investigation Board",
+        "theme": "Taiwan TV Crime News, Forensic Investigation & Public Safety Board",
         "ui": (
             "Background: dark tactical gritty concrete texture with subtle dark navy vignetting. "
             "Cards: high-contrast forensic evidence rows, sharp rectangles with 2px solid white borders. "
@@ -122,8 +122,20 @@ STYLE_CONFIG: Dict[str, Dict[str, str]] = {
         "palette": "Tactical Slate Gray, Heavy Police Blue, Pure White text",
         "highlight": "High-Visibility Safety Orange (#ff6d00) or Alert Red for charges",
     },
+    "災防天氣 (Storm Alert)": {
+        "theme": "Severe Weather, Disaster Prevention & Public Safety Broadcast CG",
+        "ui": (
+            "Background: dark storm-blue to charcoal broadcast texture with rain bands, radar-like arcs, wind streaks, and emergency studio lighting. "
+            "Cards: hard-edged warning panels, sharp rectangles, strong white borders, red/yellow alert strips, and blue emergency information blocks. "
+            "Typography: oversized Taiwanese TV weather-alert headline type with thick black/white outline and heavy shadow. "
+            "CRITICAL: do not use soft glass cards, pale SaaS dashboard panels, pastel gradients, or emoji-style weather/map icons. "
+            "All ROLL/VCR/photo zones remain clean empty protected areas."
+        ),
+        "palette": "Storm Navy (#071827), Charcoal Black, Emergency Red, Alert Yellow, Pure White",
+        "highlight": "Alert Yellow (#ffd400) and Emergency Red (#c80000) for storm level, danger, and key warnings",
+    },
     "體育競技 (Victory Orange)": {
-        "theme": "High-Energy Live Sports Broadcast CG",
+        "theme": "Taiwan TV Sports News, Match Recap & Athlete Feature CG",
         "ui": (
             "Background: dark graphite carbon-fiber texture with kinetic linear accents and studio spotlight beams. "
             "Cards: dynamic angled rectangular plates with sleek borders. "
@@ -135,19 +147,19 @@ STYLE_CONFIG: Dict[str, Dict[str, str]] = {
         "highlight": "Electric Victory Orange (#ff4500) for scores and records",
     },
     "全球財經 (Elite Obsidian)": {
-        "theme": "Premium High-End Financial Infographic Dashboard",
+        "theme": "Taiwan TV Financial News, Market Data & Economic Policy CG",
         "ui": (
-            "Background: deep midnight obsidian blue with minimal holographic data grid lines at 8% opacity. "
-            "Cards: brushed-aluminum structured rows, clean modular spreadsheet rectangles. "
-            "Typography: ultra-crisp numeric layouts with high contrast. "
+            "Background: deep midnight blue-black Taiwanese financial-news studio texture with subtle market-line texture, stock-board grid fragments, and metallic broadcast lighting. "
+            "Cards: hard-edged market data plates, thick bordered numeric tables, red/green trend badges, and gold-black headline labels. "
+            "Typography: oversized high-contrast Chinese headline type plus ultra-readable financial numbers, like an on-air TV market explainer board. "
             "CRITICAL: Financial charts or trend arrows must be fully contained within data blocks; "
-            "keep a 40px clean buffer from empty video placeholders. Avoid web dashboard elements."
+            "keep a 40px clean buffer from empty video placeholders. Avoid web dashboard, app analytics, or corporate report aesthetics."
         ),
         "palette": "Midnight Obsidian (#0a1118), Steel Gray, Clean White text",
         "highlight": "Financial Gold (#d4af37) for positive indices, Clear Red for negative indices",
     },
     "突發重磅 (Breaking Alert)": {
-        "theme": "Breaking News Emergency Alert High-Gloss Studio Template",
+        "theme": "Taiwan TV Breaking News, Emergency Alert & Live Incident CG",
         "ui": (
             "Background: intense dark vignetted studio background with subtle internal red ambient center glow. "
             "Cards: massive solid heavy-bordered emergency cards. "
@@ -176,29 +188,29 @@ STYLE_CONFIG: Dict[str, Dict[str, str]] = {
         "highlight": "Broadcast Yellow (#f5c518) for key quotes or targeted numeric emphasis",
     },
     "科技政策 (Cyber Policy)": {
-        "theme": "Digital Innovation & Cyber Infrastructure Policy",
+        "theme": "Taiwan TV Technology Policy, AI Supply Chain & Cyber Infrastructure CG",
         "ui": (
-            "Background: sleek dark steel-blue base with subtle poly-grid node lines at 10% opacity. "
-            "Cards: precision semi-transparent matrix panels with razor-thin light blue outlines. "
-            "Typography: highly legible clean modern sans-serif. "
-            "CRITICAL: Tech nodes or network lines must not interconnect through blank post-production photo zones."
+            "Background: dark steel-blue broadcast studio texture with visible circuit-board lines, server-room light streaks, and angular news-panel geometry. "
+            "Cards: hard-edged cyber information blocks, bright cyan borders, black/navy data labels, and large yellow callout bars for core facts. "
+            "Typography: heavy Taiwanese TV news type with strong outlines, combined with readable numeric/data tags. "
+            "CRITICAL: Tech nodes or network lines must not interconnect through blank post-production photo zones. Avoid SaaS product UI, software dashboard, or presentation-tech template aesthetics."
         ),
         "palette": "Dark Cyber Steel (#121921), Matte Silver",
         "highlight": "Neon Cyan (#00f5ff) for tech keywords or data nodes",
     },
     "綠能永續 (Eco-Future)": {
-        "theme": "Sustainability, ESG Trends & Environmental Public Policy",
+        "theme": "Taiwan TV Environmental Policy, Energy Transition & Public Impact CG",
         "ui": (
-            "Background: calm dark-charcoal to organic emerald-vignette studio backdrop. "
-            "Cards: clean sustainable modular panels, structured rows with soft depth shadows. "
-            "Typography: clear environmental broadcast font layout. "
-            "CRITICAL: Respect all asset protection zones; green graphic elements must never contaminate empty photo boxes."
+            "Background: dark charcoal and emerald Taiwanese news-studio texture with subtle energy-grid lines, landscape silhouettes, and restrained industrial texture. "
+            "Cards: hard rectangular public-policy blocks, green/blue energy labels, yellow warning highlights, and thick white dividers. "
+            "Typography: bold environmental-news headline typography with strong contrast and broadcast drop shadows. "
+            "CRITICAL: Respect all asset protection zones; green graphic elements must never contaminate empty photo boxes. Avoid ESG slide decks, corporate sustainability reports, or soft eco app panels."
         ),
         "palette": "Deep Charcoal, Sustainable Emerald Green (#0f5132), White text",
         "highlight": "Sunlight Eco-Gold (#ffc107) for milestones and ratings",
     },
     "現代民俗 (Modern Festive)": {
-        "theme": "Modern Cultural Folk, Festival Broadcast & Local Tradition",
+        "theme": "Taiwan TV Culture, Festival, Local Tradition & Society CG",
         "ui": (
             "Background: rich deep charcoal lacquer finish with elegant dark vermilion gradients in the corners. "
             "Cards: solid rectangular structured plates with clean gold-threaded 1px margins. "
@@ -209,12 +221,12 @@ STYLE_CONFIG: Dict[str, Dict[str, str]] = {
         "highlight": "Imperial Gold (#e5a93b) for key dates or cultural headings",
     },
     "生醫科技 (Clinical White)": {
-        "theme": "Medical Innovation, Healthcare Reports & Laboratory Analytics",
+        "theme": "Taiwan TV Medical News, Healthcare Policy & Public Health CG",
         "ui": (
-            "Background: ultra-clean high-contrast clinical light-gray to soft sterile-blue gradient. "
-            "Cards: pristine structured white rectangular grids with clear steel-blue dividers. "
-            "Typography: professional high-readability scientific text layout. "
-            "CRITICAL: Keep massive contrast between text and background. No laboratory graphics may touch empty video windows."
+            "Background: clinical white/steel-blue Taiwanese medical-news studio texture with subtle ECG lines, medical grid accents, and crisp broadcast lighting. "
+            "Cards: hard-edged hospital-info panels, steel-blue dividers, red emergency labels, and large white data boxes with thick borders. "
+            "Typography: professional but bold TV news headline type, high-readability medical terms and numbers, not a hospital software screen. "
+            "CRITICAL: Keep massive contrast between text and background. No laboratory graphics may touch empty video windows. Avoid healthcare dashboard, patient portal, or sterile slide-template aesthetics."
         ),
         "palette": "Pristine Light Gray (#f8f9fa), Clinical Steel Navy, Dark Charcoal text",
         "highlight": "Bright Medical Sky Blue (#00a2ff) for core metrics and data points",
@@ -618,6 +630,8 @@ def auto_detect_frame_type(script: str) -> str:
 
 def auto_detect_style(script: str) -> str:
     """依新聞題材自動挑選視覺風格；仍可在 UI 手動覆寫。"""
+    if _contains_any(script, ["暴雨", "豪雨", "大雨", "雨彈", "颱風", "中颱", "輕颱", "強颱", "薔蜜", "淹水", "積淹水", "土石流", "強陣風", "外圍環流", "氣象", "雷雨", "降雨", "風雨", "災防", "海防", "封門", "屋垮", "屋塌"]):
+        return "災防天氣 (Storm Alert)"
     if _contains_any(script, ["黃金週", "旅遊", "海外旅遊", "首爾", "曼谷", "台北", "高雄", "九份", "旗津", "天燈", "美食", "避風港", "消費", "百貨", "新光", "微風", "北車", "商場"]):
         return "民生消費 (Fluid Analytics)"
     if _contains_any(script, ["股", "台股", "大盤", "營業額", "權重", "財經", "億", "漲", "跌"]):
@@ -1185,8 +1199,35 @@ HEADLINE: {' '.join(lines)}
 """.strip()
 
 
+def normalize_editor_asset_lines(script: str) -> str:
+    """把裸寫的華視編輯語素材行轉成標準圖區 token，例如 右=ROLL → [ROLL-右]。"""
+    if not script:
+        return ""
+
+    pos_map = {
+        "左": "左", "左邊": "左", "左側": "左", "左上": "左上", "左下": "左下",
+        "右": "右", "右邊": "右", "右側": "右", "右上": "右上", "右下": "右下",
+        "中": "中", "中間": "中", "上": "上", "上方": "上", "下": "下", "下方": "下",
+    }
+
+    def _replace_col_asset(m: re.Match) -> str:
+        pos = pos_map.get(m.group(1).strip(), m.group(1).strip())
+        media = m.group(2).strip().upper()
+        if media.startswith("開框"):
+            media = "ROLL"
+        return f"[{media}-{pos}]"
+
+    return re.sub(
+        r"^(左上|左下|右上|右下|左邊?|右邊?|左側|右側|中間?|上方?|下方?|上|下)\s*[=:：＝]\s*(ROLL|roll|Roll|VCR|vcr|開框ROLL|開框roll)\s*$",
+        _replace_col_asset,
+        script,
+        flags=re.MULTILINE,
+    )
+
+
 def parse_editor_slots_v242(script: str) -> List[Dict[str, str]]:
     """把華視編輯語 token 轉成 slot list，供 prompt 鎖定圖框數量。"""
+    script = normalize_editor_asset_lines(script or "")
     tokens: List[Dict[str, str]] = []
     for raw in (script or "").splitlines():
         line = raw.strip()
@@ -1205,6 +1246,13 @@ def parse_editor_slots_v242(script: str) -> List[Dict[str, str]]:
                 tokens.append({"type": "info_card", "label": label})
             elif "箭頭" in inner:
                 tokens.append({"type": "flow_arrow", "label": label})
+        # 方括號語法：[圖-右主] / [ROLL-右] / [VCR-左]
+        for m in re.finditer(r"\[([^\]]*)\]", line):
+            label = m.group(0)
+            inner = m.group(1).strip()
+            if is_asset_protection_tag(label):
+                kind = "roll_slot" if re.search(r"ROLL|roll|VCR|vcr|開框", inner) else "image_slot"
+                tokens.append({"type": kind, "label": label})
         # 尖括號定圖語法 <定圖 xxx>
         for m in re.finditer(r'<\s*定圖([^>]*?)>', line):
             tokens.append({"type": "image_slot", "label": f"<定圖{m.group(1).strip()}>"})
@@ -1247,6 +1295,7 @@ RULES:
 
 def parse_user_script(script: str) -> ParsedInput:
     """v22.16 Headline Group Lock"""
+    script = normalize_editor_asset_lines(script or "")
 
     warnings: List[str] = []
 
@@ -1588,7 +1637,7 @@ def sanitize_script_for_image_model(script: str) -> str:
     8. 雙引號符號 → 移除（保留內文）
     9. vs. / V.S → 統一格式
     """
-    text = script
+    text = normalize_editor_asset_lines(script)
 
     # 0a. 稿件開始/結束標記及檔案名稱行（在所有處理之前清掉）
     cleaned_lines_pre = []
@@ -1688,14 +1737,33 @@ def sanitize_script_for_image_model(script: str) -> str:
         text,
     )
 
-    # 預處理 B：「(地點字小)地名」→ location pin icon
+    def _location_badge_instruction(loc: str = "") -> str:
+        loc = (loc or "").strip()
+        loc_text = f" {loc}" if loc else ""
+        return (
+            f"attached location badge{loc_text} "
+            "(small map-pin logo plus location text, integrated into a solid TV-news label attached to the outer edge of the nearest media frame; "
+            "may be horizontal at the upper-right corner or vertical on the right edge; not standalone; not inside the protected media zone)"
+        )
+
+    # 預處理 B：「(地點字小)地名」/「(地點字)地名」→ attached location badge
     def _replace_location_small(m: re.Match) -> str:
         loc = m.group(1).strip()
-        return f"location pin icon {loc} (small text, overlay on top edge of ROLL zone)"
+        return _location_badge_instruction(loc)
 
     text = re.sub(
-        r'\([^)]*(?:地點字小|地點.*字小|字小.*地點)[^)]*\)\s*([\u4e00-\u9fff]{1,20})',
+        r'\([^)]*(?:地點字小|地點字|地點.*字小|字小.*地點)[^)]*\)\s*([\u4e00-\u9fff]{1,20})',
         _replace_location_small,
+        text,
+    )
+    text = re.sub(
+        r'(?:打卡符號|打卡logo|打卡LOGO)\s*([\u4e00-\u9fff\w]{1,20})',
+        lambda m: _location_badge_instruction(m.group(1).strip()),
+        text,
+    )
+    text = re.sub(
+        r'([\u4e00-\u9fff\w]{1,20})\s*(?:打卡符號|打卡logo|打卡LOGO)',
+        lambda m: _location_badge_instruction(m.group(1).strip()),
         text,
     )
 
@@ -1720,11 +1788,11 @@ def sanitize_script_for_image_model(script: str) -> str:
         if inner.strip() in ("打勾", "勾"):
             return "✓"
 
-        # 4. (#打卡) / (#打卡 地名) → location pin icon，貼 ROLL 框上緣
-        if re.search(r'[#＃]?打卡', inner):
-            loc = re.sub(r'[#＃]?打卡\s*', '', inner).strip()
+        # 4. (#打卡) / (#打卡 地名) / (打卡符號) / (地點字) → attached broadcast location color-block label
+        if re.search(r'[#＃]?(?:打卡|打卡符號|打卡LOGO|打卡logo|地點字)', inner):
+            loc = re.sub(r'[#＃]?(?:打卡符號|打卡LOGO|打卡logo|打卡|地點字)\s*', '', inner).strip()
             loc_str = (' ' + loc) if loc else ''
-            return f"location pin icon{loc_str} (overlay on top edge of ROLL zone, outside ROLL interior)"
+            return _location_badge_instruction(loc_str)
 
         # 5. (#ICON) 系列 — 只有帶 # 的才轉，不帶 # 的不處理（避免腦補）
         # 涵蓋：(#ICON) / (#警方ICON) / (#警方icon) — # 在括號內任何位置
@@ -1754,21 +1822,21 @@ def sanitize_script_for_image_model(script: str) -> str:
         if inner_s.startswith("CALENDAR ICON") or inner_s.startswith("COLOR BLOCK MODULE") or inner_s.startswith("calendar icon") or inner_s.startswith("§CARDSTART§"):
             return m.group(0)
         if is_asset_protection_tag(f"[{inner_s}]"):
-            return m.group(0)
-        # [打卡xxx] / [打卡LOGO] → 地圖釘指令（地名在括號後面，由下方 re.sub 一起處理）
-        if inner_s.startswith("打卡"):
+            return ""
+        # [打卡xxx] / [打卡LOGO] / [打卡符號] / [地點字] → 打卡 logo 指令
+        if "打卡" in inner_s or "打卡logo" in inner_s or "打卡LOGO" in inner_s or inner_s.startswith("地點字"):
             return "§LOCATION_PIN§"
         return inner_s
 
     text = re.sub(r'\[([^\]]+)\]', _replace_square, text)
-    # 把 §LOCATION_PIN§ 後面緊接的地名一起轉成 location pin icon 指令
+    # 把 §LOCATION_PIN§ 後面緊接的地名一起轉成 attached broadcast location color-block label 指令
     text = re.sub(
         r'§LOCATION_PIN§\s*([\u4e00-\u9fff\w]{1,20})',
-        lambda m: f"location pin icon {m.group(1).strip()}",
+        lambda m: _location_badge_instruction(m.group(1).strip()),
         text
     )
     # 沒有地名的孤立標記也清掉
-    text = text.replace("§LOCATION_PIN§", "location pin icon")
+    text = text.replace("§LOCATION_PIN§", _location_badge_instruction())
 
     # 8. 移除雙引號和尖括號符號（保留內文）
     text = re.sub(r'["\u201c\u201d\u300c\u300d\u300e\u300f]', '', text)
@@ -2000,17 +2068,17 @@ def translate_prompt_for_imagen(
     # 抽出圖區清單，用來生成強化版空白指令
     asset_zones = _extract_asset_zones(script)
     blank_zone_lines = []
-    for tag in asset_zones:
+    for idx, tag in enumerate(asset_zones, start=1):
         if re.search(r'ROLL|roll|VCR|vcr|開框', tag, re.IGNORECASE):
             blank_zone_lines.append(
-                f'  - {tag} → ABSOLUTE BLANK BLACK VIDEO WINDOW: '
+                f'  - Protected dark video window {idx} → ABSOLUTE BLANK BLACK VIDEO WINDOW: '
                 f'render as a 100% empty dark rectangle with subtle broadcast metallic frame. '
                 f'ZERO text, ZERO icons, ZERO labels, ZERO fake photos inside. '
                 f'Post-production real footage will be inserted here.'
             )
         else:
             blank_zone_lines.append(
-                f'  - {tag} → ABSOLUTE BLANK WHITE RECTANGLE: '
+                f'  - Protected photo/document rectangle {idx} → ABSOLUTE BLANK WHITE RECTANGLE: '
                 f'render as a 100% empty white/light-gray box. '
                 f'ZERO text, ZERO icons, ZERO labels, ZERO fake photos inside. '
                 f'Post-production real photo will be inserted here.'
@@ -2022,7 +2090,7 @@ def translate_prompt_for_imagen(
         "標大框": (
             "LAYOUT GRID (1920x1080 canvas):\n"
             "  - HEADLINE BAND: y=0 to y=430 (top 40%), full width — mega headline typography only, dominant visual wall\n"
-            "  - LOWER LEFT: x=0 to x=960, y=430 to y=990 — main image/ROLL protected zone\n"
+            "  - LOWER LEFT: x=0 to x=960, y=430 to y=990 — main protected media zone\n"
             "  - LOWER RIGHT: x=960 to x=1920, y=430 to y=990 — information cards and modules\n"
             "  - TICKER SAFE ZONE: x=1332 to x=1920, y=990 to y=1080 — background only, no content"
         ),
@@ -2038,7 +2106,7 @@ def translate_prompt_for_imagen(
             "LAYOUT GRID (1920x1080 canvas):\n"
             "  - HEADLINE BAND: y=0 to y=180 (top 17%), full width — single-line headline\n"
             "  - LEFT DEBATE ZONE: x=0 to x=640, y=180 to y=780 — two person portrait zones with quote cards\n"
-            "  - RIGHT MAIN ROLL: x=640 to x=1920, y=180 to y=780 — large protected ROLL/video zone\n"
+            "  - RIGHT MAIN VIDEO WINDOW: x=640 to x=1920, y=180 to y=780 — large protected dark video zone\n"
             "  - BOTTOM TIMELINE: y=780 to y=990, full width — timeline image zones and conclusion\n"
             "  - TICKER SAFE ZONE: x=1332 to x=1920, y=990 to y=1080 — background only"
         ),
@@ -2053,7 +2121,7 @@ def translate_prompt_for_imagen(
             "LAYOUT GRID (1920x1080 canvas):\n"
             "  - HEADLINE BAND: y=0 to y=180 (top 17%), full width — single-line headline\n"
             "  - LEFT RELATION DIAGRAM: x=0 to x=880, y=180 to y=990 — role groups, nodes, connector lines\n"
-            "  - RIGHT MAIN ROLL: x=880 to x=1920, y=180 to y=780 — large protected ROLL/video zone\n"
+            "  - RIGHT MAIN VIDEO WINDOW: x=880 to x=1920, y=180 to y=780 — large protected dark video zone\n"
             "  - TICKER SAFE ZONE: x=1332 to x=1920, y=990 to y=1080 — background only"
         ),
         "記者說新聞": (
@@ -2233,6 +2301,7 @@ def _extract_asset_zones(script: str) -> List[str]:
     """抓出所有素材保護區語法：(#定圖)、(圖片)、(定國防部外觀照)、[圖-右主]、(#開框roll)、<定圖 xxx> 等。"""
     if not script:
         return []
+    script = normalize_editor_asset_lines(script)
     # 先把 <定圖 xxx> 轉成 (定圖xxx) 再解析
     import re as _re
     script = _re.sub(
@@ -2265,12 +2334,12 @@ def _extract_approved_text_whitelist(script: str) -> List[str]:
 
     # 移除純版型指令，但保留 <高權重文字>、【小標文字】 內文。
     text = re.sub(
-        r"\([^\)]*(?:色塊|對話框|數據框|筆刷|蓋章|icon|假人|頭\+字|打卡)[^\)]*\)",
+        r"\([^\)]*(?:色塊|對話框|數據框|筆刷|蓋章|icon|假人|頭\+字|打卡|打卡符號|地點字)[^\)]*\)",
         "\n",
         text,
     )
     text = re.sub(
-        r"[#＃](?:色塊|對話框|數據框|筆刷|蓋章|icon|假人|打卡|開框roll|開框ROLL|定圖)",
+        r"[#＃]?(?:色塊|對話框|數據框|筆刷|蓋章|icon|假人|打卡符號|打卡|地點字|開框roll|開框ROLL|定圖)",
         "\n",
         text,
     )
@@ -2313,10 +2382,10 @@ def _extract_approved_text_whitelist(script: str) -> List[str]:
 
 def _strip_director_syntax(text: str) -> str:
     """把新聞台控制語法轉成語意提示，不把素材/版型標籤當成要畫出的文字。"""
-    text = text or ""
+    text = normalize_editor_asset_lines(text or "")
     for tag in _extract_asset_zones(text):
         text = text.replace(tag, " protected empty photo/video asset zone ")
-    text = re.sub(r"\([^\)]*(?:色塊|對話框|數據框|筆刷|蓋章|icon|假人|打卡)[^\)]*\)", " broadcast graphic module ", text)
+    text = re.sub(r"\([^\)]*(?:色塊|對話框|數據框|筆刷|蓋章|icon|假人|打卡|打卡符號|地點字)[^\)]*\)", " broadcast graphic module ", text)
     text = re.sub(r"[#＃][\w\u4e00-\u9fff]+", " broadcast effect module ", text)
     text = re.sub(r"\[(TYPE|FRAME|TITLE|BODY|STYLE|LAYOUT|HEADLINE|CONTENT SCRIPT|DIRECTOR NOTES)[^\]]*\]", " ", text, flags=re.I)
     text = text.replace("<", "").replace(">", "")
@@ -2336,7 +2405,7 @@ def _clean_visual_text(text: str) -> str:
     t = text.strip()
     for tag in _extract_asset_zones(t):
         t = t.replace(tag, " ")
-    t = re.sub(r"\([^)]*(?:色塊|方框|對話框|數據框|筆刷|蓋章|icon|假人|打卡)[^)]*\)", " ", t)
+    t = re.sub(r"\([^)]*(?:色塊|方框|對話框|數據框|筆刷|蓋章|icon|假人|打卡|打卡符號|地點字)[^)]*\)", " ", t)
     t = re.sub(r"^[\-—=]{2,}$", " ", t)
     t = t.replace("標題：", "").replace("標題:", "").replace("標題=", "")
     t = t.replace("大標：", "").replace("大標:", "").replace("大標=", "")
@@ -2538,6 +2607,11 @@ def build_visual_token_compiler_block(script: str, frame_type: str, headline_mod
     roll_position: Optional[str] = None  # None = 未指定，不假設
     for _ln in script.splitlines():
         _ln = _ln.strip()
+        _normalized_ln = normalize_editor_asset_lines(_ln).strip()
+        _bm = re.search(r'\[(ROLL|VCR)-(左下|右下|左上|右上|左|右|中|上|下)\]', _normalized_ln, re.IGNORECASE)
+        if _bm:
+            roll_position = _POS_MAP.get(_bm.group(2), _bm.group(2))
+            break
         # (右VCR) / (左ROLL) 等位置內嵌 tag
         _m = re.search(rf'\((左下|右下|左邊|右邊|左側|右側|中間|左|右|中)({_ROLL_TAG_PAT})\)', _ln, re.IGNORECASE)
         if _m:
@@ -2575,7 +2649,7 @@ def build_visual_token_compiler_block(script: str, frame_type: str, headline_mod
             else:
                 pos_text = "positioned according to the overall layout, "
         visual_zone_lines.append(
-            f"- MAIN ROLL/FOOTAGE ZONE: "
+            f"- MAIN DARK VIDEO WINDOW: "
             f"a large black/dark empty video window {pos_text}"
             f"VERTICAL POSITION: must start BELOW the headline band (below y=430 for 標大框, below y=180 for 框訊). "
             f"ABSOLUTELY FORBIDDEN inside or overlapping the headline band. "
@@ -2603,7 +2677,7 @@ def build_visual_token_compiler_block(script: str, frame_type: str, headline_mod
     if not visual_zone_lines:
         if frame_type != "記者說新聞":
             visual_zone_lines.append(
-                "- MAIN ROLL/FOOTAGE ZONE (default): "
+                "- MAIN DARK VIDEO WINDOW (default): "
                 "a large black/dark empty video window on the right or center-right. "
                 "VERTICAL POSITION: must start BELOW the headline band (below y=430 for 標大框, below y=180 for 框訊). "
                 "ABSOLUTELY FORBIDDEN inside or overlapping the headline band. "
@@ -2725,6 +2799,55 @@ def _frame_visual_intent(frame_type: str, reporter_subtype: str, headline_mode: 
     return "professional modular TV news graphic layout with clear headline band and protected asset placeholders"
 
 
+def _frame_style_lock(frame_type: str) -> str:
+    """依版型加入新聞台視覺語法鎖；不鎖死圖區位置，只鎖定美術語言。"""
+    if frame_type == "標大框":
+        return """
+FRAME STYLE LOCK — 標大框 / MEGA HEADLINE FRAME:
+This frame is a Taiwanese TV news mega-headline board, not a presentation slide or clean infographic.
+The top headline is the absolute visual driver. It may occupy 35-50% of canvas height when needed.
+Use oversized, condensed, high-impact Traditional Chinese broadcast typography with thick black/white outlines, heavy shadow, hard contrast, and yellow/white/red/blue emphasis.
+Supporting modules below the headline must be fewer, larger, and stronger than 框訊. Do not turn the page into a full data dashboard.
+Use real newsroom visual language when relevant: live footage frame, CCTV still, cutout person, date/location tag, warning strip, quote block, evidence photo, simple timeline card, or protected blank media zone.
+Asset zones are flexible: they may be left, right, center, top, bottom, white, black, or multi-panel according to user tags and layout needs. Never force a single right-side blank zone.
+Do not create extra media/photo boxes beyond the user-provided asset markers or system-added frame requirement.
+""".strip()
+
+    if frame_type.startswith("框訊") or frame_type == "框訊":
+        return """
+FRAME STYLE LOCK — 框訊 / MODULAR NEWS INFO BOARD:
+This frame is a high-density Taiwanese TV news information board, not a dashboard, SaaS interface, or presentation slide.
+Use newsroom CG grammar: powerful headline band, hard-edged red/yellow/blue/black blocks, evidence images, cutout people, CCTV/video frames, social screenshot panels, quote cards, warning strips, brush emphasis when explicitly tagged, torn-paper news labels, burst callouts, date/location tags, and strong hierarchy.
+The layout may be dense. Density is acceptable if hierarchy is clear: headline first, key conflict second, evidence modules third, details last.
+Avoid clean rounded app cards and soft glass panels. Prefer hard broadcast panels, thick strokes, angled labels, strong drop shadows, and high-contrast Chinese typography.
+Asset zones are flexible: one large blank zone, multiple photo/video zones, left/right split, top/bottom split, background footage, or black video windows are all valid when driven by user tags.
+Do not force one fixed image-zone position. Do not invent extra image zones. Do not delete user-requested image zones.
+""".strip()
+
+    return """
+FRAME STYLE LOCK:
+Use Taiwanese TV news CG visual language with strong headline hierarchy, hard broadcast panels, high-contrast colors, and protected image/video zones driven by user tags.
+Do not make the page look like a dashboard, SaaS product interface, or presentation slide.
+""".strip()
+
+
+def _image_prompt_negative_style_terms(frame_type: str) -> str:
+    """圖片模型常見偏差：禁止簡報化、產品 UI 化、柔玻璃卡片化。"""
+    base = (
+        "no dashboard, no SaaS interface, no software product UI, no admin panel, "
+        "no presentation slide, no PowerPoint layout, no clean corporate infographic, "
+        "no soft glass card, no frosted glass panel, no glassmorphism, "
+        "no minimal clean UI, no rounded app cards, no pastel app dashboard, "
+        "no emoji-style map pin, no map emoji, no generic app icons, no emoji-style weather icons, "
+        "no AI sparkle watermark, no decorative sparkle, no Gemini sparkle mark"
+    )
+    if frame_type == "標大框":
+        return base + ", no tiny headline, no equal-weight text blocks, no full dashboard of small cards"
+    if frame_type.startswith("框訊") or frame_type == "框訊":
+        return base + ", no overly sparse slide, no low-density minimalist layout"
+    return base
+
+
 def _style_visual_intent(style_name: str) -> str:
     if style_name == AI_FREE_STYLE_NAME or str(style_name).startswith("AI自由"):
         return (
@@ -2747,6 +2870,12 @@ def _style_visual_intent(style_name: str) -> str:
 def _content_palette_hint(script: str, frame_type: str) -> str:
     """依內容給 Gemini Image 一個可自由發揮的底圖/配色方向，不新增新聞事實。"""
     s = script
+    if _contains_any(s, ["暴雨", "豪雨", "大雨", "雨彈", "颱風", "中颱", "輕颱", "強颱", "薔蜜", "淹水", "積淹水", "土石流", "強陣風", "外圍環流", "氣象", "雷雨", "降雨", "風雨", "災防", "海防"]):
+        return (
+            "severe-weather broadcast palette: dark storm navy, charcoal black, radar blue, emergency red, alert yellow, pure white. "
+            "Use rain-band texture, radar arcs, wind streaks, and hard warning panels. "
+            "Avoid pale blue glass cards, soft gradients, dashboard UI, and emoji-style weather/map icons."
+        )
     if _contains_any(s, ["共諜", "起訴", "貪污", "羈押", "檢", "司法", "三重罪", "求刑", "洗錢"]):
         return "legal/investigative palette: deep navy, black, warning yellow, restrained red accents, serious prosecution mood"
     if _contains_any(s, ["參選", "候選人", "選舉", "選情", "掃街", "提名", "民進黨", "國民黨", "民眾黨", "市長", "立委", "議員", "政論", "攻防", "政黨", "彈劾", "立院", "席次"]):
@@ -2766,9 +2895,9 @@ def _content_palette_hint(script: str, frame_type: str) -> str:
     if _contains_any(s, ["鼠", "蟑", "環境", "防治", "衛生", "市府"]):
         return "public-safety/civic issue palette: gritty dark gray, urban green, caution red, yellow highlights, textured city background"
     if _contains_any(s, ["股", "財經", "億", "匯率", "營收", "市場", "投資"]):
-        return "financial palette: deep navy, black, gold, cyan data glow, premium dashboard texture"
+        return "financial palette: deep navy, black, gold, cyan data glow, premium broadcast data texture"
     if _contains_any(s, ["旅遊", "消費", "美食", "百貨", "黃金週", "民生"]):
-        return "consumer/lifestyle palette: clean blue, warm orange, soft beige, frosted glass, lighter energetic background"
+        return "consumer/lifestyle palette: clean blue, warm orange, bright energetic broadcast background, hard-edged readable news panels"
     if frame_type == "記者說新聞":
         return "explanatory news palette: clean blue-gray, calm contrast, readable cards, restrained accent color"
     if frame_type == "標大框":
@@ -2787,7 +2916,7 @@ AI FREE STYLE / BACKGROUND / PALETTE / TYPOGRAPHY MODE is ENABLED.
 Do NOT restrict the design to the fixed Visual Director style library. The model may freely choose any professional Taiwanese broadcast-news style based on the story content, conflict level, topic, and emotional tone.
 Suggested content-sensitive direction: {content_hint}.
 The model may choose its own color palette, headline treatment, card shapes, faction labels, lighting, background texture, motion texture, typography weight, and layout rhythm.
-The background may include abstract broadcast textures such as newsroom gradients, metallic panels, civic map texture, data grid, subtle smoke, caution pattern, glass panels, paper texture, court/investigation texture, military texture, or dark studio lighting when appropriate.
+The background may include abstract broadcast textures such as newsroom gradients, metallic panels, civic map texture, data grid, subtle smoke, caution pattern, hard-edged translucent broadcast panels, paper texture, court/investigation texture, military texture, or dark studio lighting when appropriate.
 CRITICAL: freedom only applies to style, palette, background, and layout arrangement. It must never create extra people, extra objects, extra facts, extra logos, extra text, random labels, fake screenshots, or fake photos inside asset zones.
 CRITICAL: background and palette must respect all Asset Protection Zones; no texture, icon, stamp, brush, shadow, or text may invade the empty photo/video placeholders.
 Keep approved Traditional Chinese typography readable and accurate.
@@ -2811,9 +2940,17 @@ Reference style if needed: {base_style}.
 def _asset_zone_prompt(asset_zones: List[str], transparent_holes: bool) -> str:
     if not asset_zones:
         return (
-            "No explicit asset markers were provided; if a photo area is needed, create one clean protected blank photo placeholder."
+            "No explicit asset markers were provided. Do not invent extra photo/video boxes unless the frame system has already added one to the user script."
         )
-    zone_list = "\n".join([f"- {z}" for z in asset_zones[:12]])
+    def _zone_description(tag: str, index: int) -> str:
+        raw = tag or ""
+        pos_match = re.search(r'(左上|左下|右上|右下|左|右|中|上|下)', raw)
+        pos_text = f", requested position: {pos_match.group(1)}" if pos_match else ""
+        if re.search(r'ROLL|roll|VCR|vcr|開框', raw):
+            return f"- Protected dark footage window {index}{pos_text}: large black/dark empty rectangle, clean broadcast frame, absolutely no visible marker text."
+        return f"- Photo/document protected zone {index}{pos_text}: clean white/light neutral empty post-production rectangle, no visible marker text."
+
+    zone_list = "\n".join(_zone_description(z, i) for i, z in enumerate(asset_zones[:12], start=1))
     fill_style = (
         "plain transparent-looking or light neutral empty rectangles"
         if transparent_holes else
@@ -2824,12 +2961,60 @@ Newsroom post-production blank image zones requested by the user:
 {zone_list}
 For each requested image/photo/video/document marker, reserve a clean blank area in the CG layout.
 These areas are for real post-production material, not AI-generated content.
-Interior must be {fill_style}; however ROLL/VCR/開框 zones should be rendered as black/dark empty video windows with a clean broadcast frame.
+Interior must be {fill_style}; video-footage zones should be rendered as black/dark empty video windows with a clean broadcast frame.
+Respect the requested number and intent of asset zones. Do not create second or third extra boxes unless the user script explicitly requested them.
 No fake photos, no fake screenshots, no icons, no labels, no text, no stamps, no brush strokes, no arrows, no decorations inside.
 Keep at least 40px clean safety buffer around every blank image zone.
-Do not render marker words such as 定圖, 圖片, 開框roll, 外觀照, LINE截圖.
+Do not render any editor marker words or bracket/parenthesis tags. The blank rectangles must contain zero words and zero labels.
 If the layout is crowded, rearrange modules or reduce font size. Do not invade image zones and do not delete user-provided text.
 """.strip()
+
+
+def _scrub_editor_marker_words_for_image_prompt(text: str) -> str:
+    """圖片模型正向 prompt 不能出現素材標記原字，否則容易被畫進圖框。"""
+    if not text:
+        return ""
+    t = text
+    t = re.sub(r"\[[^\]]*(?:ROLL|VCR|圖|圖片|定圖|開框)[^\]]*\]", "protected media zone", t, flags=re.IGNORECASE)
+    t = re.sub(r"\([^)]*(?:ROLL|VCR|圖|圖片|定圖|開框|LINE截圖)[^)]*\)", "protected media zone", t, flags=re.IGNORECASE)
+    replacements = {
+        "ROLL/VCR": "video window",
+        "ROLL": "video window",
+        "roll": "video window",
+        "VCR": "video window",
+        "vcr": "video window",
+        "開框roll": "video window",
+        "開框ROLL": "video window",
+        "開框": "video window",
+        "定圖": "photo placeholder",
+        "圖片": "photo placeholder",
+        "圖區": "media zone",
+        "打卡logo": "attached location badge",
+        "打卡LOGO": "attached location badge",
+        "打卡符號": "attached location badge",
+    }
+    for src, dst in replacements.items():
+        t = t.replace(src, dst)
+    return t
+
+
+def _extract_location_badge_locations(script: str) -> List[str]:
+    """擷取 (宜蘭打卡logo)、(台北市 打卡logo)、[打卡LOGO]高雄 這類地名。"""
+    if not script:
+        return []
+    locations: List[str] = []
+    patterns = [
+        r'\(([\u4e00-\u9fff\w]{1,20})\s*(?:打卡logo|打卡LOGO|打卡符號|打卡)\)',
+        r'\((?:打卡logo|打卡LOGO|打卡符號|打卡|地點字)\s*([\u4e00-\u9fff\w]{1,20})\)',
+        r'\[(?:打卡logo|打卡LOGO|打卡符號|打卡|地點字)\]\s*([\u4e00-\u9fff\w]{1,20})',
+        r'\([^)]*(?:地點字小|地點字|地點.*字小|字小.*地點)[^)]*\)\s*([\u4e00-\u9fff]{1,20})',
+    ]
+    for pat in patterns:
+        for m in re.finditer(pat, script):
+            loc = re.sub(r'(?:打卡logo|打卡LOGO|打卡符號|打卡|地點字)', '', m.group(1)).strip()
+            if loc:
+                locations.append(loc)
+    return list(dict.fromkeys(locations))
 
 
 def build_image_prompt_translator(
@@ -2853,8 +3038,30 @@ def build_image_prompt_translator(
     parsed = parse_user_script(script)
     asset_zones = _extract_asset_zones(script)
     approved_text = _extract_approved_text_whitelist(script)
+    location_badge_locations = _extract_location_badge_locations(script)
+    for loc in location_badge_locations:
+        if loc not in approved_text:
+            approved_text.append(loc)
+    location_badge_policy = ""
+    if re.search(r"打卡|打卡logo|打卡LOGO|打卡符號|地點字", script or ""):
+        loc_text = ", ".join(location_badge_locations) if location_badge_locations else "the provided location text"
+        location_badge_policy = f"""
+LOCATION BADGE LOCK:
+The user explicitly requested a 打卡logo / location badge.
+Location text to render inside the attached badge only: {loc_text}.
+Render it as a small integrated location badge attached to the OUTER EDGE of the nearest photo/video frame.
+The badge includes a map-pin logo plus the location text as one joined TV-news graphic.
+It may slightly overlap the frame BORDER only, but must never enter the protected media interior.
+Allowed styles:
+1. upper-right corner badge: small white/black map-pin logo with bold yellow location text, sitting just outside the media-frame border.
+2. right-edge vertical badge: slim blue rounded vertical tab attached to the media-frame right edge, with a small orange/white pin at the top and vertical white location text.
+Preferred placement: upper-right corner or right edge of the largest media frame; if crowded, use another outer edge of the same media frame.
+Do not place the location badge in a separate column, separate card, text list, headline band, or body paragraph.
+Do not create a standalone location icon. The pin must be physically integrated with the attached badge.
+""".strip()
     title = _strip_director_syntax(parsed.title)[:60]
-    visual_compiler = build_visual_token_compiler_block(script, frame_type, headline_mode)
+    visual_compiler = _scrub_editor_marker_words_for_image_prompt(build_visual_token_compiler_block(script, frame_type, headline_mode))
+    grammar_block = _scrub_editor_marker_words_for_image_prompt(build_taiwan_news_cg_grammar(script, frame_type))
     # v20.6.6：不要再把原始 DSL 長文直接餵給圖片模型；改用已去符號、去繼承的 compiler 摘要。
     content_hint = _strip_director_syntax(script)[:260]
 
@@ -2889,6 +3096,8 @@ def build_image_prompt_translator(
     )
 
     senior_news_cg_policy = build_senior_news_cg_designer_policy()
+    frame_style_lock = _scrub_editor_marker_words_for_image_prompt(_frame_style_lock(frame_type))
+    negative_style_terms = _image_prompt_negative_style_terms(frame_type)
 
     clean_render_policy = """
 CLEAN RENDER POLICY:
@@ -2907,6 +3116,10 @@ Only render broadcast UI explicitly tagged by the user.
 If not explicitly tagged: leave the area empty.
 EMPTY > ASSUMPTION. Never decorate automatically.
 Content-specific logos explicitly provided by the user script may be rendered as content icons, but do not invent channel branding.
+
+WATERMARK / SPARKLE BAN:
+Do not draw any watermark, Gemini sparkle mark, four-point star, AI sparkle, decorative star, or signature mark.
+Especially keep the bottom-right corner free of sparkle/star icons.
 """.strip()
 
     if has_explicit_brush_tag(script):
@@ -2929,14 +3142,17 @@ Professional Taiwanese TV news CG, 1920x1080 horizontal 16:9, polished broadcast
 
 {visual_compiler}
 
-{build_taiwan_news_cg_grammar(script, frame_type)}
+{grammar_block}
 
-Layout intent: {_frame_visual_intent(frame_type, reporter_subtype, headline_mode)}.
+Layout intent: {_scrub_editor_marker_words_for_image_prompt(_frame_visual_intent(frame_type, reporter_subtype, headline_mode))}.
+{frame_style_lock}
+
 Headline area: {headline_mode}; title meaning reference only: {title or 'news headline'}.
 Background and color strategy: {_background_visual_directive(script, frame_type, style_name, background_mode)}.
 
 ASSET PROTECTION ZONE POLICY:
 {_asset_zone_prompt(asset_zones, transparent_holes)}
+{location_badge_policy}
 
 Broadcast module translation:
 - (#色塊) / (色塊) means information card blocks.
@@ -2945,7 +3161,7 @@ Broadcast module translation:
 - If no explicit brush tag exists in the user script, brush strokes are forbidden.
 - Do not convert <文字>, 「quotes」, numbers, conflict words, emotional words, or body text into brush strokes.
 - Do not duplicate any body sentence into a separate brush/stamp/sticker module unless that exact line is explicitly tagged. Only promote a sentence once.
-- (#打卡) means a location badge with a map-pin icon, placed outside asset zones.
+- Explicit location-badge syntax means a small attached TV-news location badge on the outer edge of the nearest photo/video frame. It includes a small map-pin logo plus the location text as one joined badge, like a corner badge or a vertical edge tab. It must touch or visually anchor to the media-frame border while staying OUTSIDE the protected media interior. Never place it as a standalone icon in another column and never create a separate card for it.
 - <文字> means high-priority headline emphasis or impact typography; render the text exactly if it appears in the whitelist, but it is NOT a brush trigger.
 
 Explicit brush policy for this page:
@@ -2969,14 +3185,14 @@ No horror, no distorted faces, no creepy anatomy, no surreal artifacts. Real pho
 """.strip()
 
     negative_prompt = f"""
-{negative_text}{negative_fx}, no unrequested ticker, no unrequested breaking news strip, no unrequested LIVE tag, no unrequested channel logo, no unrequested timestamp, no unrequested lower-third, no unrequested bottom news bar, no watermark, no QR code, no extra news facts, no creepy face, no distorted human, no horror mood, no movie poster, no magazine cover, no social media post, no clutter, no overlapping text on asset zones, no labels inside empty asset zones, no brackets, no prompt syntax, no [圖], no (#定圖), no (圖片), no UI debug labels, no stamp or brush overlapping protected image boxes, no duplicated headline text, no duplicated names, no repeated keywords, no concatenating body text into headline
+{negative_text}{negative_fx}, {negative_style_terms}, no standalone location pin, no standalone map pin, no detached location badge, no separate location badge card, no location badge in text columns, no location badge inside headline band, no Gemini sparkle mark, no AI sparkle icon, no four-point star, no decorative star, no bottom-right sparkle, no unrequested ticker, no unrequested breaking news strip, no unrequested LIVE tag, no unrequested channel logo, no unrequested timestamp, no unrequested lower-third, no unrequested bottom news bar, no watermark, no QR code, no extra news facts, no creepy face, no distorted human, no horror mood, no movie poster, no magazine cover, no social media post, no clutter, no overlapping text on asset zones, no labels inside empty asset zones, no editor marker words, no marker labels inside media boxes, no brackets, no prompt syntax, no UI debug labels, no stamp or brush overlapping protected image boxes, no duplicated headline text, no duplicated names, no repeated keywords, no concatenating body text into headline
 """.strip()
 
     return {
         "positive_prompt": positive_prompt,
         "negative_prompt": negative_prompt,
         "copy_prompt": positive_prompt + "\n\nNEGATIVE PROMPT:\n" + negative_prompt,
-        "note": f"v20.6.6 會先做 Visual Token Compiler：標題/卡片/圖區分層，素材標記轉成 Asset Protection Zone，文字採白名單；筆刷只有明確標註才生成；Zero Assumption 禁止自行補跑馬/快訊/LIVE/台標；底圖配色模式：{background_mode}",
+        "note": f"v26.1 會依版型套用框訊/標大框新聞台語法鎖：圖區位置不鎖死，但禁止 dashboard/SaaS/簡報化；素材標記轉成 Asset Protection Zone，文字採白名單；筆刷只有明確標註才生成；Zero Assumption 禁止自行補跑馬/快訊/LIVE/台標；底圖配色模式：{background_mode}",
     }
 
 def build_cg_preview_html(script: str, frame_type: str, headline_mode: str, reporter_subtype_override: str = "", conclusion: Dict[str, str] | None = None) -> str:
@@ -3917,15 +4133,22 @@ with tab_prompt:
 
         style_layout_mode = st.radio(
             "風格與排版判斷",
-            ["AI 自由決定風格、配色、字形與排版（不受固定風格庫限制）", "手動選擇固定風格庫"],
+            ["使用自動判斷風格庫（推薦）", "AI 自由決定風格、配色、字形與排版（不受固定風格庫限制）", "手動選擇固定風格庫"],
             index=0,
             horizontal=False,
-            help="AI 自由決定：不侷限在下方固定風格庫，AI 可依內容自行決定配色、底圖、字形、色塊與排版；手動選擇：才使用固定風格庫。",
+            help="推薦：套用自動辨識出的固定風格，品質較穩；AI 自由：不受固定風格庫限制，彈性較高但穩定性較低。",
         )
-        if style_layout_mode.startswith("AI 自由決定"):
+        if style_layout_mode.startswith("使用自動判斷"):
+            style_name = detected_style_name
+            layout_mode = "DYNAMIC"
+            ai_color = True
+            image_background_mode = "沿用自動判斷風格庫"
+            st.success(f"已套用自動判斷風格：{detected_style_name}")
+        elif style_layout_mode.startswith("AI 自由決定"):
             style_name = AI_FREE_STYLE_NAME
             layout_mode = "DYNAMIC"
             ai_color = True
+            image_background_mode = "AI自動判斷（依內容自由配色＋生成底圖）"
             st.success("AI 自由模式：不套用固定風格庫，AI 會依新聞內容自行決定風格、配色、字形與排版。")
             st.caption(f"系統參考題材判斷：{detected_style_name}；但不會被這個風格綁死。")
         else:
@@ -3936,6 +4159,7 @@ with tab_prompt:
             )
             layout_mode = st.radio("排版模式", ["GRID", "DYNAMIC"], horizontal=True)
             ai_color = st.toggle("AI 視覺主權：依新聞情緒配色", value=True)
+            image_background_mode = "沿用手動固定風格庫"
 
         if frame_type == "記者說新聞":
             st.markdown("### 🧠 記者說新聞子類型")
@@ -4065,52 +4289,93 @@ with tab_prompt:
     st.code(final_prompt, language="markdown")
 
     # =========================================================
-    # v25.0 Imagen Prompt Translator
+    # v26.0 Imagen Stable Prompt Builder
     # =========================================================
     st.divider()
-    st.markdown("### 🌐 v25.0 Imagen 專用指令（解決版型跑掉 + 亂補文字）")
+    st.markdown("### 🌐 v26.0 Imagen 專用指令（穩定版）")
     st.caption(
-        "把上方中英混雜的導演指令翻譯成 Gemini Imagen 真正聽得懂的純英文視覺 prompt。"
-        "圖區改用座標比例描述、空白框用 ABSOLUTE BLANK RECTANGLE 強化、所有結構指令強制英文。"
+        "預設使用固定規則產生圖片模型指令：文字白名單、Negative Prompt、圖區保護、零推論 UI。"
+        "避免再把整份導演指令交給模型二次翻譯，降低版型跑掉與亂補字的機率。"
     )
 
-    col_translate_btn, col_translate_info = st.columns([1, 2])
-    with col_translate_btn:
-        do_translate = st.button(
-            "🌐 翻譯成 Imagen 純英文指令",
-            key="translate_for_imagen_btn",
+    col_stable_btn, col_stable_options = st.columns([1, 2])
+    with col_stable_btn:
+        do_build_stable_imagen = st.button(
+            "🌐 產生穩定版 Imagen 指令",
+            key="build_stable_imagen_btn",
             type="primary",
-            help="消耗一次 Gemini Text API，約 0.01 USD",
+            help="不消耗 Gemini Text API；由本機規則直接產生。",
         )
-    with col_translate_info:
+    with col_stable_options:
+        no_text_mode = st.toggle(
+            "無文字底圖模式",
+            value=False,
+            help="只產生版面、底圖與留白區，不讓圖片模型畫任何可讀文字；文字留給後製。",
+        )
+        transparent_holes = st.toggle(
+            "圖區用淺色透明感留白",
+            value=False,
+            help="開啟後圖區傾向淺色/透明感空框；關閉則 ROLL/VCR 使用較深的播出框。",
+        )
         st.caption(
-            "📌 使用時機：把這份英文指令貼到 Gemini Imagen / ImageFX / Whisk。"
-            "原本的中英混雜導演指令只適合給 Gemini Text 看，不適合直接丟給圖像模型。"
+            "📌 建議先用穩定版。若你要保留全部導演長指令語氣，可展開下方「舊版 Gemini 翻譯」。"
         )
 
-    if do_translate:
-        _api_key = get_api_key()
-        if not _api_key:
-            st.error("❌ 找不到 Gemini API Key，請於側邊欄輸入。")
-        elif not script.strip():
+    if do_build_stable_imagen:
+        if not script.strip():
             st.warning("請先填入框訊文字稿再翻譯。")
         else:
-            with st.spinner("正在翻譯成 Imagen 純英文指令…（約 5-15 秒）"):
-                _translated, _err = translate_prompt_for_imagen(
-                    director_prompt=final_prompt,
-                    script=script_for_prompt,
-                    frame_type=frame_type,
-                    api_key=_api_key,
-                    model_name=CURRENT_MODEL,
-                )
-            if _err:
-                st.error(f"翻譯失敗：{_err}")
+            _stable_prompt = build_image_prompt_translator(
+                script=script_for_prompt,
+                frame_type=frame_type,
+                style_name=style_name,
+                headline_mode=headline_mode,
+                reporter_subtype=reporter_subtype,
+                use_safe_zone=use_safe_zone,
+                no_text_mode=no_text_mode,
+                transparent_holes=transparent_holes,
+                background_mode=image_background_mode,
+            )
+            st.session_state["imagen_translated_prompt"] = _stable_prompt["copy_prompt"]
+            st.session_state["imagen_prompt_note"] = _stable_prompt["note"]
+            st.success("✅ 穩定版 Imagen 指令已產生！建議複製下方完整 prompt。")
+
+    with st.expander("備用：舊版 Gemini 二次翻譯", expanded=False):
+        st.caption(
+            "這條路徑會呼叫 Gemini Text API，把上方導演指令翻成英文。"
+            "它比較有語氣彈性，但穩定性較差；目前保留作為比對。"
+        )
+        do_translate = st.button(
+            "🌐 使用舊版翻譯成 Imagen 純英文指令",
+            key="translate_for_imagen_btn",
+            help="消耗一次 Gemini Text API，約 0.01 USD",
+        )
+        if do_translate:
+            _api_key = get_api_key()
+            if not _api_key:
+                st.error("❌ 找不到 Gemini API Key，請於側邊欄輸入。")
+            elif not script.strip():
+                st.warning("請先填入框訊文字稿再翻譯。")
             else:
-                st.session_state["imagen_translated_prompt"] = _translated
-                st.success("✅ 翻譯完成！直接複製下方指令貼到 Imagen。")
+                with st.spinner("正在翻譯成 Imagen 純英文指令…（約 5-15 秒）"):
+                    _translated, _err = translate_prompt_for_imagen(
+                        director_prompt=final_prompt,
+                        script=script_for_prompt,
+                        frame_type=frame_type,
+                        api_key=_api_key,
+                        model_name=CURRENT_MODEL,
+                    )
+                if _err:
+                    st.error(f"翻譯失敗：{_err}")
+                else:
+                    st.session_state["imagen_translated_prompt"] = _translated
+                    st.session_state["imagen_prompt_note"] = "舊版 Gemini 二次翻譯輸出；若成品不穩，建議改用 v26.0 穩定版。"
+                    st.success("✅ 翻譯完成！直接複製下方指令貼到 Imagen。")
 
     if st.session_state.get("imagen_translated_prompt"):
         _tp = st.session_state["imagen_translated_prompt"]
+        if st.session_state.get("imagen_prompt_note"):
+            st.caption(st.session_state["imagen_prompt_note"])
 
         # 一鍵複製
         render_one_click_copy(_tp, "Imagen 英文指令", "imagen_prompt_copy")
@@ -4122,9 +4387,17 @@ with tab_prompt:
         _cn_structure_terms = ["左欄", "右欄", "圖區", "留白", "安全區", "標大框", "框訊", "記者說新聞"]
         _leaked = [t for t in _cn_structure_terms if t in _tp]
         if _leaked:
-            st.warning(f"⚠️ 翻譯後仍殘留中文結構詞：{'、'.join(_leaked)}，建議再翻一次或手動刪除。")
+            st.warning(f"⚠️ 指令仍殘留中文結構詞：{'、'.join(_leaked)}，建議改用穩定版或手動刪除。")
         else:
-            st.success("✅ 稽核通過：結構指令已全數轉英文，沒有殘留中文版型詞。")
+            st.success("✅ 稽核通過：沒有殘留中文版型詞。")
+
+        _risky_prompt_terms = [
+            "PLACEHOLDER", "Image Box", "IMAGE BOX", "DEBUG", "SECTION",
+            "[圖]", "(#定圖)", "(圖片)", "定圖", "開框roll",
+        ]
+        _risky_found = [t for t in _risky_prompt_terms if t in _tp]
+        if _risky_found:
+            st.warning(f"⚠️ 指令含可能被畫出來的提示字：{'、'.join(_risky_found)}。貼到 Imagen 前建議刪除或改用無文字底圖模式。")
 
 
 with tab_hole:
