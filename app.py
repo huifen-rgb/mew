@@ -1404,7 +1404,6 @@ def parse_user_script(script: str) -> ParsedInput:
         "假人",
         "icon",
         "筆刷",
-        "警語",
         "關係",
         "群組",
         "頭+字",
@@ -1489,7 +1488,6 @@ Brush effect — triggered ONLY by explicit tags; never applied automatically:
   #筆刷 / ＃筆刷 / 筆刷效果 / (筆刷) / (#筆刷xxx) / ---筆刷
 Stamp effect — triggered ONLY by explicit tags; never applied automatically:
   #蓋章 / ＃蓋章 / 蓋章效果 / (蓋章) / (#蓋章xxx) / ---蓋章 / --------蓋章
-Standalone (蓋章) applies stamp visual treatment to the nearest adjacent text line, preferably the previous non-empty line; delete the tag text and never render the word 蓋章.
 Stamp must always render OUTSIDE all image zones and ticker safe zone.
 
 [MODULE TAGS]
@@ -1497,7 +1495,6 @@ Stamp must always render OUTSIDE all image zones and ticker safe zone.
 - (定人+色塊) / (定人頭+色塊) => Render a person portrait placeholder with an attached lower color-block text label. Delete instruction text.
 - (對話框) / (拉對話框) / (+對話框) => Render as speech bubble. Delete instruction text.
 - (數據框) => Render as layered data block. Delete instruction text.
-- (小字警語 xxx) => Render only xxx as a small warning notice; 小字警語 is a style instruction, not visible text.
 - (icon假人大頭) / (數個假人icon) => Render as simple person icon group. Delete instruction text.
 - <黑人影> => Render as a black human silhouette icon. Delete the angle-bracket syntax and do not render the words 黑人影.
 """.strip()
@@ -1671,104 +1668,6 @@ Detected intent: {intent}
 
     return "[TAIWANESE NEWS CG GRAMMAR v23]\nUse professional Taiwanese TV news CG grammar."
 
-_STAMP_EFFECT_MARKER = "[STAMP EFFECT on following text]"
-_BRUSH_EFFECT_MARKER = "[BRUSH EFFECT on following text]"
-_SMALL_WARNING_MARKER = "[SMALL WARNING NOTICE]"
-
-
-def _is_standalone_stamp_tag(line: str) -> bool:
-    stripped = (line or "").strip()
-    return bool(
-        re.fullmatch(r"[（(]\s*#?蓋章(?:效果)?[^）)]*[）)]", stripped)
-        or re.fullmatch(r"[#＃]蓋章(?:效果)?", stripped)
-        or re.fullmatch(r"-{2,}\s*蓋章(?:效果)?", stripped)
-    )
-
-
-def _strip_inline_stamp_tag(line: str) -> Tuple[str, bool]:
-    """把同一行的蓋章 tag 拿掉，回傳被套效果的文字。"""
-    if not line:
-        return line, False
-    updated = re.sub(r"\s*[（(]\s*#?蓋章(?:效果)?[^）)]*[）)]\s*", "", line).strip()
-    updated = re.sub(r"^\s*\[\s*蓋章(?:效果)?[^\]]*\]\s*", "", updated).strip()
-    updated = re.sub(r"^\s*[#＃]蓋章(?:效果)?\s*", "", updated).strip()
-    updated = re.sub(r"^\s*-{2,}\s*蓋章(?:效果)?\s*", "", updated).strip()
-    return updated, updated != line.strip()
-
-
-def _attach_stamp_marker_to_previous(lines: List[str]) -> bool:
-    for idx in range(len(lines) - 1, -1, -1):
-        if not lines[idx].strip():
-            continue
-        if lines[idx].strip().startswith("["):
-            continue
-        lines.insert(idx, _STAMP_EFFECT_MARKER)
-        return True
-    return False
-
-
-def normalize_stamp_effect_tags_for_content(script: str) -> str:
-    """把 (蓋章) 轉為不可見效果指令，避免模型把蓋章兩字畫出來。"""
-    output: List[str] = []
-    pending_stamp = False
-    for raw_line in (script or "").splitlines():
-        line = raw_line.strip()
-        if _is_standalone_stamp_tag(line):
-            if not _attach_stamp_marker_to_previous(output):
-                pending_stamp = True
-            continue
-
-        stripped_stamp, has_inline_stamp = _strip_inline_stamp_tag(raw_line)
-        if pending_stamp and stripped_stamp.strip():
-            output.append(_STAMP_EFFECT_MARKER)
-            pending_stamp = False
-        if has_inline_stamp and stripped_stamp.strip():
-            output.append(_STAMP_EFFECT_MARKER)
-            output.append(stripped_stamp)
-        else:
-            output.append(raw_line)
-    return "\n".join(output)
-
-
-def normalize_small_warning_tags_for_content(script: str) -> str:
-    """(小字警語 xxx) 中只有 xxx 是可見文字；小字警語是樣式指令。"""
-    def _replace(m: re.Match) -> str:
-        warning_text = " ".join(m.group(1).strip().split())
-        if not warning_text:
-            return ""
-        return f"\n{_SMALL_WARNING_MARKER}\n{warning_text}\n"
-
-    return re.sub(r"[（(]\s*小字警語\s+([^）)]+)[）)]", _replace, script or "")
-
-
-def extract_explicit_stamp_targets(script: str) -> List[str]:
-    normalized = normalize_stamp_effect_tags_for_content(script)
-    targets: List[str] = []
-    apply_next = False
-    for raw in normalized.splitlines():
-        line = raw.strip()
-        if not line:
-            continue
-        if line == _STAMP_EFFECT_MARKER:
-            apply_next = True
-            continue
-        if apply_next:
-            cleaned = _clean_visual_text(line) if "_clean_visual_text" in globals() else clean_inline_text(line)
-            if cleaned:
-                targets.append(cleaned)
-            apply_next = False
-    return list(dict.fromkeys(targets))[:6]
-
-
-def extract_small_warning_texts(script: str) -> List[str]:
-    warnings = [
-        " ".join(m.group(1).strip().split())
-        for m in re.finditer(r"[（(]\s*小字警語\s+([^）)]+)[）)]", script or "")
-        if m.group(1).strip()
-    ]
-    return list(dict.fromkeys(warnings))[:6]
-
-
 def sanitize_script_for_image_model(script: str) -> str:
     """
     把編輯語法轉成圖像模型能直接執行的乾淨指令。
@@ -1786,8 +1685,6 @@ def sanitize_script_for_image_model(script: str) -> str:
     9. vs. / V.S → 統一格式
     """
     text = normalize_editor_asset_lines(script)
-    text = normalize_small_warning_tags_for_content(text)
-    text = normalize_stamp_effect_tags_for_content(text)
 
     # 0a. 稿件開始/結束標記及檔案名稱行（在所有處理之前清掉）
     cleaned_lines_pre = []
@@ -1977,15 +1874,7 @@ def sanitize_script_for_image_model(script: str) -> str:
     def _replace_square(m: re.Match) -> str:
         inner_s = m.group(1)
         # 已轉換的特殊指令保留原樣
-        if (
-            inner_s.startswith("CALENDAR ICON")
-            or inner_s.startswith("COLOR BLOCK MODULE")
-            or inner_s.startswith("calendar icon")
-            or inner_s.startswith("§CARDSTART§")
-            or inner_s.startswith("STAMP EFFECT")
-            or inner_s.startswith("BRUSH EFFECT")
-            or inner_s.startswith("SMALL WARNING NOTICE")
-        ):
+        if inner_s.startswith("CALENDAR ICON") or inner_s.startswith("COLOR BLOCK MODULE") or inner_s.startswith("calendar icon") or inner_s.startswith("§CARDSTART§"):
             return m.group(0)
         if is_asset_protection_tag(f"[{inner_s}]"):
             return ""
@@ -2189,7 +2078,7 @@ Never prioritize aesthetics over protected zone integrity.
 
 [FINAL IMAGE RESTRICTIONS - CRITICAL]
 {STRICT_NO_EXTRA_FACTS.strip()}
-- DELETE ALL literal instruction tags, including [圖], [圖-xxx], (#定xxx), (定人), (定人頭), (定人+色塊), (色塊), (對話框), (蓋章), (小字警語 xxx), #筆刷.
+- DELETE ALL literal instruction tags, including [圖], [圖-xxx], (#定xxx), (定人), (定人頭), (定人+色塊), (色塊), (對話框), #筆刷.
 - DELETE ALL double quotes and angle brackets after applying visual emphasis.
 - Every detected image placeholder must become a clean empty protected zone for real post-production photos.
 - No text/icon/UI/decoration/stamp/brush effect may touch or overlap protected image zones.
@@ -2207,7 +2096,6 @@ The following text has been pre-processed. All editor markup has been removed or
 Image zone tags (ROLL, VCR, 定圖, etc.) have been REMOVED from this script — their positions and sizes are described separately in the Photo/video areas section below.
 - [STAMP EFFECT on following text] = apply stamp visual effect to the text on the next line. Do not render this instruction as text.
 - [BRUSH EFFECT on following text] = apply brush stroke visual effect to the text on the next line. Do not render this instruction as text.
-- [SMALL WARNING NOTICE] = render the next line as small warning text, like a subtle vertical or narrow warning label. Do not render this instruction as text.
 {sanitize_script_for_image_model(script)}
 
 [DIRECTOR NOTES]
@@ -2522,9 +2410,6 @@ def _extract_approved_text_whitelist(script: str) -> List[str]:
     text = script
 
     text = re.sub(r"<\s*定圖[^>]*>", "\n", text)
-    text = re.sub(r"[（(]\s*小字警語\s+([^）)]+)[）)]", r"\1", text)
-    text = re.sub(r"\[\s*蓋章(?:效果)?[^\]]*\]", "", text)
-    text = re.sub(r"\[\s*筆刷(?:效果)?[^\]]*\]", "", text)
 
     # 移除素材保護區標籤，避免把「定國防部外觀照」這種素材說明當成要上字。
     for tag in _extract_asset_zones(text):
@@ -2584,10 +2469,9 @@ def _strip_director_syntax(text: str) -> str:
     text = normalize_editor_asset_lines(text or "")
     text = re.sub(r"<\s*定圖[^>]*>", " protected empty photo/logo asset zone ", text)
     text = re.sub(r"<\s*黑人影\s*>", " black human silhouette icon ", text)
-    text = re.sub(r"[（(]\s*小字警語\s+([^）)]+)[）)]", r" small warning notice \1 ", text)
     for tag in _extract_asset_zones(text):
         text = text.replace(tag, " protected empty photo/video asset zone ")
-    text = re.sub(r"\([^\)]*(?:色塊|對話框|數據框|筆刷|蓋章|警語|icon|假人|打卡|打卡符號|地點字)[^\)]*\)", " broadcast graphic module ", text)
+    text = re.sub(r"\([^\)]*(?:色塊|對話框|數據框|筆刷|蓋章|icon|假人|打卡|打卡符號|地點字)[^\)]*\)", " broadcast graphic module ", text)
     text = re.sub(r"[#＃][\w\u4e00-\u9fff]+", " broadcast effect module ", text)
     text = re.sub(r"\[(TYPE|FRAME|TITLE|BODY|STYLE|LAYOUT|HEADLINE|CONTENT SCRIPT|DIRECTOR NOTES)[^\]]*\]", " ", text, flags=re.I)
     text = text.replace("<", "").replace(">", "")
@@ -2607,8 +2491,7 @@ def _clean_visual_text(text: str) -> str:
     t = text.strip()
     for tag in _extract_asset_zones(t):
         t = t.replace(tag, " ")
-    t = re.sub(r"[（(]\s*小字警語\s+([^）)]+)[）)]", r"\1", t)
-    t = re.sub(r"\([^)]*(?:色塊|方框|對話框|數據框|筆刷|蓋章|警語|icon|假人|打卡|打卡符號|地點字)[^)]*\)", " ", t)
+    t = re.sub(r"\([^)]*(?:色塊|方框|對話框|數據框|筆刷|蓋章|icon|假人|打卡|打卡符號|地點字)[^)]*\)", " ", t)
     t = re.sub(r"^[\-—=]{2,}$", " ", t)
     t = t.replace("標題：", "").replace("標題:", "").replace("標題=", "")
     t = t.replace("大標：", "").replace("大標:", "").replace("大標=", "")
@@ -2795,8 +2678,6 @@ def build_visual_token_compiler_block(script: str, frame_type: str, headline_mod
     title_block = _headline_prompt_block(parsed.title, frame_type, headline_mode)
     headline_line_set = set(_clean_headline_lines_for_prompt(parsed.title))
     asset_zones = _extract_asset_zones(script)
-    stamp_targets = extract_explicit_stamp_targets(script)
-    small_warning_texts = extract_small_warning_texts(script)
     blocks = _split_script_blocks(script)
 
     text_groups: List[List[str]] = []
@@ -2823,8 +2704,6 @@ def build_visual_token_compiler_block(script: str, frame_type: str, headline_mod
             if _clean_visual_text(stripped) in headline_line_set:
                 continue
             if is_asset_protection_tag(stripped):
-                continue
-            if re.search(r"[（(]\s*小字警語\s+[^）)]+[）)]", stripped):
                 continue
             if re.fullmatch(r"[-—=]{3,}", stripped):
                 continue
@@ -2884,15 +2763,10 @@ def build_visual_token_compiler_block(script: str, frame_type: str, headline_mod
             break  # 找到了 ROLL 但沒位置，停止掃描，roll_position 保持 None
 
     text_group_lines: List[str] = []
-    for lines in text_groups:
-        # 每個 group 獨立輸出，保留換行，讓 Imagen 理解分組；不加數字避免模型誤繪編號
+    for idx, lines in enumerate(text_groups, start=1):
+        # 每個 group 獨立輸出，保留換行，讓 Imagen 理解分組
         group_content = "\n  ".join(lines)
-        text_group_lines.append(f"- News content block:\n  {group_content}")
-
-    for warning in small_warning_texts:
-        text_group_lines.append(
-            f"- Small warning notice:\n  {warning}\n  Render this as small warning typography; do not render the words 小字警語."
-        )
+        text_group_lines.append(f"- Content zone {idx}:\n  {group_content}")
 
     if not text_group_lines:
         text_group_lines.append("- No body text module provided. Keep the content area clean and do not invent text.")
@@ -2942,11 +2816,6 @@ def build_visual_token_compiler_block(script: str, frame_type: str, headline_mod
             f"Render as AXIS-ALIGNED white/light-gray empty rectangle. "
             f"Interior: ZERO content — no text, no label, no icon, no fake photo. "
             f"Editor will insert real photo here after generation."
-        )
-    for target in stamp_targets:
-        visual_zone_lines.append(
-            f"- Stamp effect target: render the exact text '{target}' as a stamp-style emphasis badge or stamped color block. "
-            f"Delete the tag text 蓋章. Keep the stamp OUTSIDE every protected image/ROLL/photo zone."
         )
 
     if not visual_zone_lines:
@@ -3452,8 +3321,7 @@ Broadcast module translation:
 - (定人) / (定人頭) means a protected blank person portrait/headshot zone for post-production.
 - (定人+色塊) / (定人頭+色塊) means a protected blank person portrait/headshot zone with an attached broadcast color-block text label below or beside it. The label is outside the portrait interior; never put words inside the person image placeholder.
 - <黑人影> means a black human silhouette icon, like a simple TV news person-shadow pictogram. Do not render the literal words 黑人影 or the angle brackets.
-- (#蓋章) / (蓋章) means a stamp-style emphasis treatment applied to the nearest adjacent text line, preferably the previous non-empty line. Never render the literal word 蓋章. Keep the stamp OUTSIDE all asset zones.
-- (小字警語 xxx) means render only xxx as a small warning notice; 小字警語 is a style instruction and must not appear as visible text.
+- (#蓋章) means a stamp-style emphasis module placed OUTSIDE all asset zones; do not infer stamp from ordinary text.
 - BRUSH EFFECT IS EXPLICIT ONLY: create brush strokes ONLY when the user explicitly writes (#筆刷), (筆刷), #筆刷, ---筆刷, or 筆刷效果.
 - If no explicit brush tag exists in the user script, brush strokes are forbidden.
 - Do not convert <文字>, 「quotes」, numbers, conflict words, emotional words, or body text into brush strokes.
