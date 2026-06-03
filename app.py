@@ -307,7 +307,7 @@ def _contains_any(script: str, words: List[str]) -> bool:
 
 
 ASSET_PROTECTION_KEYWORDS = [
-    "圖", "圖片", "定圖", "定", "開框", "ROLL", "roll", "Roll",
+    "圖", "圖片", "定圖", "定人", "定人頭", "定", "開框", "ROLL", "roll", "Roll",
     "LINE截圖", "截圖", "VCR", "vcr",
     "監視器", "畫面", "外觀照", "照片", "空拍", "地圖", "示意", "素材", "影像",
     # 常見複合圖區命名
@@ -327,6 +327,7 @@ def is_asset_protection_tag(tag: str) -> bool:
       比例圖區：  (圖 4:3) / (圖 4:5) / (圖 16:9) 等
       圓括號圖區：(圖片) / (#開框roll) / (開框ROLL) / (LINE截圖) / (VCR)
       定圖語法：  (#定xxx) / (定xxx圖) / (#開框xxx)
+      定人語法：  (定人) / (定人頭) / (定人+色塊) / (定人頭+色塊)
       行內圖區：  (xxx圖) — 任何以「圖」結尾的圓括號標籤
       版面佔比：  [圖占版面xxx] — 例如 [圖占版面1/2]
     """
@@ -344,6 +345,10 @@ def is_asset_protection_tag(tag: str) -> bool:
 
     # (#定xxx) / (定xxx圖) / (#開框xxx) / (＃開框xxx)
     if "#定" in t or "＃定" in t or "#開框" in t or "＃開框" in t:
+        return True
+
+    # (定人) / (定人頭) / (定人+色塊) / (定人頭+色塊)
+    if re.search(r'[（(]\s*定人(?:頭)?(?:\s*[+＋]\s*色塊)?\s*[）)]', t):
         return True
 
     # (圖 4:3) / (圖 4:5) / (圖 16:9) 等比例格式
@@ -375,11 +380,12 @@ def _count_image_intents(script: str) -> int:
     markers = [
         "[圖",                   # [圖] / [圖-左] / [圖-右] / [圖-xxx]
         "(#定", "(＃定", "(定",  # (#定xxx) / (定xxx圖)
+        "<定圖",                 # <定圖 東吳Logo>
         "(圖片", "圖片",          # (圖片)
         "截圖",                  # LINE截圖 / 截圖
         "ROLL", "roll",          # (#開框roll) / (開框ROLL) / ROLL
         "VCR", "vcr",            # (VCR)
-        "定圖", "外觀照", "開框", # 其他慣用語法
+        "定圖", "定人", "定人頭", "外觀照", "開框", # 其他慣用語法
         "(圖 ",                  # (圖 4:3) / (圖 4:5) 比例格式
     ]
     return sum(script.count(marker) for marker in markers)
@@ -973,6 +979,8 @@ AI 只負責內容拆解，不得破壞版面安全。
 【符號規則】
 - 雙引號內文字：重點變色，最後刪除引號。
 - <文字>：高權重關鍵字，可做最大色塊或強調。
+- <黑人影>：黑色剪影人物 icon，最後刪除尖括號語法與「黑人影」字樣。
+- <定圖 東吳Logo>：指定留白定圖／Logo 圖區，最後刪除尖括號語法與「定圖」指令文字。
 - 【文字】：小標題色塊，最後刪除括號。
 - [圖-xxx]：硬留白圖片區，最後刪除標籤文字。
 - (色塊)、(對話框)、(數據框)、#筆刷：版面模組指令，最後刪除指令字樣。
@@ -1045,6 +1053,11 @@ def _collect_square_tags(script: str) -> List[str]:
         tags.append(script[left:right + 1])
         start = right + 1
     return tags
+
+
+def _collect_angle_asset_tags(script: str) -> List[str]:
+    """抓尖括號素材語法；<定圖 xxx> 是圖區，<黑人影> 是 icon 不在這裡。"""
+    return [m.group(0) for m in re.finditer(r"<\s*定圖[^>]*>", script or "")]
 
 
 
@@ -1238,7 +1251,12 @@ def parse_editor_slots_v242(script: str) -> List[Dict[str, str]]:
             label = m.group(0)
             inner = m.group(1).strip()
             if is_asset_protection_tag(label):
-                kind = "roll_slot" if re.search(r"ROLL|roll|VCR|vcr|開框", inner) else "image_slot"
+                if re.search(r"定人(?:頭)?\s*[+＋]\s*色塊", inner):
+                    kind = "person_color_slot"
+                elif re.search(r"定人(?:頭)?", inner):
+                    kind = "person_slot"
+                else:
+                    kind = "roll_slot" if re.search(r"ROLL|roll|VCR|vcr|開框", inner) else "image_slot"
                 tokens.append({"type": kind, "label": label})
             elif "對話框" in inner:
                 tokens.append({"type": "quote_box", "label": label})
@@ -1256,6 +1274,9 @@ def parse_editor_slots_v242(script: str) -> List[Dict[str, str]]:
         # 尖括號定圖語法 <定圖 xxx>
         for m in re.finditer(r'<\s*定圖([^>]*?)>', line):
             tokens.append({"type": "image_slot", "label": f"<定圖{m.group(1).strip()}>"})
+        # 尖括號 icon 語法 <黑人影>
+        for _ in re.finditer(r'<\s*黑人影\s*>', line):
+            tokens.append({"type": "icon_slot", "label": "<黑人影>"})
     # 去重
     seen = set(); out=[]
     for t in tokens:
@@ -1267,10 +1288,11 @@ def parse_editor_slots_v242(script: str) -> List[Dict[str, str]]:
 
 def slot_constraint_block_v242(script: str) -> str:
     slots = parse_editor_slots_v242(script)
-    image_slots = [s for s in slots if s["type"] in ("image_slot", "roll_slot")]
+    image_slots = [s for s in slots if s["type"] in ("image_slot", "roll_slot", "person_slot", "person_color_slot")]
     quote_slots = [s for s in slots if s["type"] == "quote_box"]
     card_slots = [s for s in slots if s["type"] == "info_card"]
     flow_slots = [s for s in slots if s["type"] == "flow_arrow"]
+    icon_slots = [s for s in slots if s["type"] == "icon_slot"]
 
     def lines_for(items: List[Dict[str, str]]) -> str:
         return "\n".join(f"- {x['type']}: {x['label']}" for x in items) if items else "- none"
@@ -1285,11 +1307,15 @@ INFO CARDS:
 {lines_for(card_slots)}
 FLOW / ARROWS:
 {lines_for(flow_slots)}
+ICONS:
+{lines_for(icon_slots)}
 RULES:
 - 只能建立上面列出的 image / roll slots。
 - 禁止為了畫面平衡自動新增白框、照片框、空框、截圖框。
 - 如果沒有 ROLL tag，就不要自動拆出多個 ROLL。
 - 所有 image / roll slot 內部必須完全空白，不放字、不放 icon、不放假照片。
+- person_slot / person_color_slot 代表人物頭像或半身照保護區；person_color_slot 必須在人物圖片下方或旁邊接一個色塊文字標籤，文字不可進入圖片內部。
+- icon_slot 代表使用者明確要求的圖示；<黑人影> 必須畫成黑色人物剪影 icon，刪除語法文字。
 - 對話框與色塊只能放在 slot 外，不能壓進圖區。
 """.strip()
 
@@ -1349,6 +1375,7 @@ def parse_user_script(script: str) -> ParsedInput:
 
     square_tags = _collect_square_tags(script)
     paren_tags = _collect_parenthesis_tags(script)
+    angle_asset_tags = _collect_angle_asset_tags(script)
 
     image_tags: List[str] = []
 
@@ -1356,6 +1383,8 @@ def parse_user_script(script: str) -> ParsedInput:
 
         if is_asset_protection_tag(tag):
             image_tags.append(tag)
+
+    image_tags.extend(angle_asset_tags)
 
     image_tags = list(
         dict.fromkeys(
@@ -1375,15 +1404,22 @@ def parse_user_script(script: str) -> ParsedInput:
         "假人",
         "icon",
         "筆刷",
+        "警語",
         "關係",
         "群組",
         "頭+字",
+        "定人+色塊",
+        "定人頭+色塊",
+        "黑人影",
     ]
 
     for tag in square_tags + paren_tags:
 
         if _contains_any(tag, module_words):
             module_tags.append(tag)
+
+    if re.search(r"<\s*黑人影\s*>", script):
+        module_tags.append("<黑人影>")
 
     if "#筆刷" in script:
         module_tags.append("#筆刷")
@@ -1414,7 +1450,10 @@ def build_symbol_matrix_v17() -> str:
     return """
 [STRICT SYMBOL MATRIX v17]
 - "雙引號" => Highlight with dynamic priority color. CRITICAL: DELETE all quote marks in final artwork.
+- Any quoted text must be rendered as colored/emphasized text only. The visible quote symbols themselves are forbidden.
 - <尖括號> => Highest-priority keyword emphasis. Remove angle brackets in final artwork.
+- Exception: <黑人影> is NOT keyword emphasis; render it as a black human silhouette icon and delete the syntax text.
+- Exception: <定圖 xxx> is NOT keyword emphasis; it creates a protected blank image/logo zone and deletes the syntax text.
 - 【方頭括號】 => Bold color-block subheading. Remove brackets in final artwork.
 - (圓括號內容) => Treat as layout instruction or preserved factual parenthesis depending on context.
 
@@ -1427,6 +1466,11 @@ Parenthesis zones:
   (圖片) / (#開框roll) / (開框ROLL) / (LINE截圖) / (VCR)
 Slug zones:
   (#定xxx) / (定xxx圖) / (#開框xxx)
+Angle-bracket asset zones:
+  <定圖 xxx> / <定圖 東吳Logo> = protected blank image/logo zone for post-production insertion. This is NOT keyword emphasis.
+Person zones:
+  (定人) / (定人頭) = protected blank person headshot/portrait zone.
+  (定人+色塊) / (定人頭+色塊) = protected blank person headshot/portrait zone plus a broadcast color-block text label attached below or beside the portrait. The label is outside the image interior.
 
 [HARD EMPTY IMAGE ZONE RULE - ABSOLUTE]
 1. Every image placeholder creates a protected bounding box.
@@ -1445,13 +1489,17 @@ Brush effect — triggered ONLY by explicit tags; never applied automatically:
   #筆刷 / ＃筆刷 / 筆刷效果 / (筆刷) / (#筆刷xxx) / ---筆刷
 Stamp effect — triggered ONLY by explicit tags; never applied automatically:
   #蓋章 / ＃蓋章 / 蓋章效果 / (蓋章) / (#蓋章xxx) / ---蓋章 / --------蓋章
+Standalone (蓋章) applies stamp visual treatment to the nearest adjacent text line, preferably the previous non-empty line; delete the tag text and never render the word 蓋章.
 Stamp must always render OUTSIDE all image zones and ticker safe zone.
 
 [MODULE TAGS]
 - (色塊) / (方框) => Render as news information card. Delete instruction text.
+- (定人+色塊) / (定人頭+色塊) => Render a person portrait placeholder with an attached lower color-block text label. Delete instruction text.
 - (對話框) / (拉對話框) / (+對話框) => Render as speech bubble. Delete instruction text.
 - (數據框) => Render as layered data block. Delete instruction text.
+- (小字警語 xxx) => Render only xxx as a small warning notice; 小字警語 is a style instruction, not visible text.
 - (icon假人大頭) / (數個假人icon) => Render as simple person icon group. Delete instruction text.
+- <黑人影> => Render as a black human silhouette icon. Delete the angle-bracket syntax and do not render the words 黑人影.
 """.strip()
 
 
@@ -1465,6 +1513,8 @@ def build_frame_rules(frame_type: str) -> str:
 - TOP HEADLINE LOCK: headline must always be placed at the very top edge area of the canvas, whether it is one line or two lines.
 - One-line headline: keep it in the top headline band, centered or left-weighted, never moved to middle.
 - Two-line headline: stack both lines in the top headline band, never placed in the center body area.
+- Headline band must contain headline typography only; no table, card, color block, icon, photo zone, ROLL/VCR window, badge, speech bubble, chart, or decorative object may share that top band or sit beside the headline.
+- All body modules must start below the headline band.
 - Do not leave accidental blank spaces, except protected image zones and ticker safe zone.
 
 [CONFLICT RESOLUTION PRIORITY]
@@ -1621,6 +1671,104 @@ Detected intent: {intent}
 
     return "[TAIWANESE NEWS CG GRAMMAR v23]\nUse professional Taiwanese TV news CG grammar."
 
+_STAMP_EFFECT_MARKER = "[STAMP EFFECT on following text]"
+_BRUSH_EFFECT_MARKER = "[BRUSH EFFECT on following text]"
+_SMALL_WARNING_MARKER = "[SMALL WARNING NOTICE]"
+
+
+def _is_standalone_stamp_tag(line: str) -> bool:
+    stripped = (line or "").strip()
+    return bool(
+        re.fullmatch(r"[（(]\s*#?蓋章(?:效果)?[^）)]*[）)]", stripped)
+        or re.fullmatch(r"[#＃]蓋章(?:效果)?", stripped)
+        or re.fullmatch(r"-{2,}\s*蓋章(?:效果)?", stripped)
+    )
+
+
+def _strip_inline_stamp_tag(line: str) -> Tuple[str, bool]:
+    """把同一行的蓋章 tag 拿掉，回傳被套效果的文字。"""
+    if not line:
+        return line, False
+    updated = re.sub(r"\s*[（(]\s*#?蓋章(?:效果)?[^）)]*[）)]\s*", "", line).strip()
+    updated = re.sub(r"^\s*\[\s*蓋章(?:效果)?[^\]]*\]\s*", "", updated).strip()
+    updated = re.sub(r"^\s*[#＃]蓋章(?:效果)?\s*", "", updated).strip()
+    updated = re.sub(r"^\s*-{2,}\s*蓋章(?:效果)?\s*", "", updated).strip()
+    return updated, updated != line.strip()
+
+
+def _attach_stamp_marker_to_previous(lines: List[str]) -> bool:
+    for idx in range(len(lines) - 1, -1, -1):
+        if not lines[idx].strip():
+            continue
+        if lines[idx].strip().startswith("["):
+            continue
+        lines.insert(idx, _STAMP_EFFECT_MARKER)
+        return True
+    return False
+
+
+def normalize_stamp_effect_tags_for_content(script: str) -> str:
+    """把 (蓋章) 轉為不可見效果指令，避免模型把蓋章兩字畫出來。"""
+    output: List[str] = []
+    pending_stamp = False
+    for raw_line in (script or "").splitlines():
+        line = raw_line.strip()
+        if _is_standalone_stamp_tag(line):
+            if not _attach_stamp_marker_to_previous(output):
+                pending_stamp = True
+            continue
+
+        stripped_stamp, has_inline_stamp = _strip_inline_stamp_tag(raw_line)
+        if pending_stamp and stripped_stamp.strip():
+            output.append(_STAMP_EFFECT_MARKER)
+            pending_stamp = False
+        if has_inline_stamp and stripped_stamp.strip():
+            output.append(_STAMP_EFFECT_MARKER)
+            output.append(stripped_stamp)
+        else:
+            output.append(raw_line)
+    return "\n".join(output)
+
+
+def normalize_small_warning_tags_for_content(script: str) -> str:
+    """(小字警語 xxx) 中只有 xxx 是可見文字；小字警語是樣式指令。"""
+    def _replace(m: re.Match) -> str:
+        warning_text = " ".join(m.group(1).strip().split())
+        if not warning_text:
+            return ""
+        return f"\n{_SMALL_WARNING_MARKER}\n{warning_text}\n"
+
+    return re.sub(r"[（(]\s*小字警語\s+([^）)]+)[）)]", _replace, script or "")
+
+
+def extract_explicit_stamp_targets(script: str) -> List[str]:
+    normalized = normalize_stamp_effect_tags_for_content(script)
+    targets: List[str] = []
+    apply_next = False
+    for raw in normalized.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line == _STAMP_EFFECT_MARKER:
+            apply_next = True
+            continue
+        if apply_next:
+            cleaned = _clean_visual_text(line) if "_clean_visual_text" in globals() else clean_inline_text(line)
+            if cleaned:
+                targets.append(cleaned)
+            apply_next = False
+    return list(dict.fromkeys(targets))[:6]
+
+
+def extract_small_warning_texts(script: str) -> List[str]:
+    warnings = [
+        " ".join(m.group(1).strip().split())
+        for m in re.finditer(r"[（(]\s*小字警語\s+([^）)]+)[）)]", script or "")
+        if m.group(1).strip()
+    ]
+    return list(dict.fromkeys(warnings))[:6]
+
+
 def sanitize_script_for_image_model(script: str) -> str:
     """
     把編輯語法轉成圖像模型能直接執行的乾淨指令。
@@ -1638,6 +1786,8 @@ def sanitize_script_for_image_model(script: str) -> str:
     9. vs. / V.S → 統一格式
     """
     text = normalize_editor_asset_lines(script)
+    text = normalize_small_warning_tags_for_content(text)
+    text = normalize_stamp_effect_tags_for_content(text)
 
     # 0a. 稿件開始/結束標記及檔案名稱行（在所有處理之前清掉）
     cleaned_lines_pre = []
@@ -1669,7 +1819,10 @@ def sanitize_script_for_image_model(script: str) -> str:
         # 4. <色塊> / <色塊N> / <色塊xxx> → COLOR BLOCK MODULE 指令
         if re.match(r'^色塊\d*$', inner) or inner == "色塊":
             return "§CARDSTART§"
-        # 5. 其他 → 保留尖括號讓 step 8 處理（變色強調，符號刪除）
+        # 5. <黑人影> → explicit black silhouette person icon
+        if inner == "黑人影":
+            return "black human silhouette icon (explicit icon tag)"
+        # 6. 其他 → 保留尖括號讓 step 8 處理（變色強調，符號刪除）
         return m.group(0)
 
     text = re.sub(r'<([^<>]+)>', _replace_angle_bracket, text)
@@ -1734,6 +1887,11 @@ def sanitize_script_for_image_model(script: str) -> str:
     text = re.sub(
         r'([\u4e00-\u9fff\w]+)\s*\([#＃](?:ICON|icon)\)',
         lambda m: m.group(1) + ' icon (explicit icon tag)',
+        text,
+    )
+    text = re.sub(
+        r'<\s*黑人影\s*>',
+        'black human silhouette icon (explicit icon tag)',
         text,
     )
 
@@ -1819,7 +1977,15 @@ def sanitize_script_for_image_model(script: str) -> str:
     def _replace_square(m: re.Match) -> str:
         inner_s = m.group(1)
         # 已轉換的特殊指令保留原樣
-        if inner_s.startswith("CALENDAR ICON") or inner_s.startswith("COLOR BLOCK MODULE") or inner_s.startswith("calendar icon") or inner_s.startswith("§CARDSTART§"):
+        if (
+            inner_s.startswith("CALENDAR ICON")
+            or inner_s.startswith("COLOR BLOCK MODULE")
+            or inner_s.startswith("calendar icon")
+            or inner_s.startswith("§CARDSTART§")
+            or inner_s.startswith("STAMP EFFECT")
+            or inner_s.startswith("BRUSH EFFECT")
+            or inner_s.startswith("SMALL WARNING NOTICE")
+        ):
             return m.group(0)
         if is_asset_protection_tag(f"[{inner_s}]"):
             return ""
@@ -1845,6 +2011,8 @@ def sanitize_script_for_image_model(script: str) -> str:
 
     # 9. vs. 統一格式
     text = re.sub(r'\s*[Vv][Vs]\.?\s*', ' vs. ', text)
+    # 最後保險：移除不完整括號的素材標記，避免 [ROLL-右) 這類殘字上畫面。
+    text = re.sub(r'[\[\(][^\]\)]*(?:ROLL|VCR|圖|圖片|定圖|定人|定人頭|開框)[^\]\)]*[\]\)]?', '', text, flags=re.IGNORECASE)
 
     return text.strip()
 
@@ -1920,10 +2088,16 @@ COLOR STRATEGY: {color_logic}
 
 [HEADLINE GROUP LOCK v22.16]
 Mode: {headline_mode}
-Headline text: {_clean_visual_text(parsed.title)}
+{_headline_prompt_block(parsed.title, frame_type, headline_mode)}
 
 TOP HEADLINE LOCK:
 The headline must always sit at the very top.
+
+The headline band is reserved for headline text only.
+
+No table, color block, image slot, ROLL box, person box, icon, badge, bubble, chart, logo, side panel, or decorative object may appear next to, above, behind, or inside the headline band.
+
+All non-headline content must begin below the headline band boundary.
 
 If headline contains multiple lines:
 
@@ -2015,7 +2189,7 @@ Never prioritize aesthetics over protected zone integrity.
 
 [FINAL IMAGE RESTRICTIONS - CRITICAL]
 {STRICT_NO_EXTRA_FACTS.strip()}
-- DELETE ALL literal instruction tags, including [圖], [圖-xxx], (#定xxx), (色塊), (對話框), #筆刷.
+- DELETE ALL literal instruction tags, including [圖], [圖-xxx], (#定xxx), (定人), (定人頭), (定人+色塊), (色塊), (對話框), (蓋章), (小字警語 xxx), #筆刷.
 - DELETE ALL double quotes and angle brackets after applying visual emphasis.
 - Every detected image placeholder must become a clean empty protected zone for real post-production photos.
 - No text/icon/UI/decoration/stamp/brush effect may touch or overlap protected image zones.
@@ -2023,7 +2197,7 @@ Never prioritize aesthetics over protected zone integrity.
 - BRUSH EFFECT IS EXPLICIT ONLY: Do not create brush effects unless the user explicitly writes (#筆刷), (筆刷), #筆刷, ---筆刷, or 筆刷效果.
 - Do not convert <emphasis>, quotes, numbers, conflict words, or normal body text into brush strokes.
 - Do not duplicate body text into a separate brush/stamp/sticker module unless explicitly tagged. Only promote a sentence once.
-- ICON IS EXPLICIT ONLY: Do not render any icon — person silhouettes, organization emblems, phone icons, money icons, building icons, shield/badge icons, crane icons, party icons, or ANY decorative symbol — unless the user script explicitly writes (icon假人大頭), (數個假人icon), (#ICON), (警方#ICON), or another named icon tag. Never infer icons from job titles, organization names, dates, or news context. When in doubt: NO ICON.
+- ICON IS EXPLICIT ONLY: Do not render any icon — person silhouettes, organization emblems, phone icons, money icons, building icons, shield/badge icons, crane icons, party icons, or ANY decorative symbol — unless the user script explicitly writes (icon假人大頭), (數個假人icon), <黑人影>, (#ICON), (警方#ICON), or another named icon tag. Never infer icons from job titles, organization names, dates, or news context. When in doubt: NO ICON.
 {build_zero_assumption_policy(script)}
 - If any image zone and text compete for space, preserve both by reducing spacing, reducing font size, or rearranging modules.
 - Final result must be a professional TV news CG, not a poster, not a webpage.
@@ -2033,6 +2207,7 @@ The following text has been pre-processed. All editor markup has been removed or
 Image zone tags (ROLL, VCR, 定圖, etc.) have been REMOVED from this script — their positions and sizes are described separately in the Photo/video areas section below.
 - [STAMP EFFECT on following text] = apply stamp visual effect to the text on the next line. Do not render this instruction as text.
 - [BRUSH EFFECT on following text] = apply brush stroke visual effect to the text on the next line. Do not render this instruction as text.
+- [SMALL WARNING NOTICE] = render the next line as small warning text, like a subtle vertical or narrow warning label. Do not render this instruction as text.
 {sanitize_script_for_image_model(script)}
 
 [DIRECTOR NOTES]
@@ -2089,14 +2264,14 @@ def translate_prompt_for_imagen(
     layout_grid_map = {
         "標大框": (
             "LAYOUT GRID (1920x1080 canvas):\n"
-            "  - HEADLINE BAND: y=0 to y=430 (top 40%), full width — mega headline typography only, dominant visual wall\n"
+            "  - HEADLINE BAND: x=0 to x=1920, y=0 to y=430 (top 40%), full width — HEADLINE TEXT ONLY, no side object, no table, no card, no icon, no image box\n"
             "  - LOWER LEFT: x=0 to x=960, y=430 to y=990 — main protected media zone\n"
             "  - LOWER RIGHT: x=960 to x=1920, y=430 to y=990 — information cards and modules\n"
             "  - TICKER SAFE ZONE: x=1332 to x=1920, y=990 to y=1080 — background only, no content"
         ),
         "框訊・多圖對比": (
             "LAYOUT GRID (1920x1080 canvas):\n"
-            "  - HEADLINE BAND: y=0 to y=180 (top 17%), full width — single-line headline\n"
+            "  - HEADLINE BAND: x=0 to x=1920, y=0 to y=180 (top 17%), full width — HEADLINE TEXT ONLY, no side object, no table, no card, no icon, no image box\n"
             "  - UPPER IMAGE ROW: y=180 to y=430, full width — multiple protected image zones side by side\n"
             "  - LOWER LEFT: x=0 to x=880, y=430 to y=990 — main image protected zone\n"
             "  - LOWER RIGHT: x=880 to x=1920, y=430 to y=990 — quote/comparison/investigation cards\n"
@@ -2104,7 +2279,7 @@ def translate_prompt_for_imagen(
         ),
         "框訊・對打時間軸": (
             "LAYOUT GRID (1920x1080 canvas):\n"
-            "  - HEADLINE BAND: y=0 to y=180 (top 17%), full width — single-line headline\n"
+            "  - HEADLINE BAND: x=0 to x=1920, y=0 to y=180 (top 17%), full width — HEADLINE TEXT ONLY, no side object, no table, no card, no icon, no image box\n"
             "  - LEFT DEBATE ZONE: x=0 to x=640, y=180 to y=780 — two person portrait zones with quote cards\n"
             "  - RIGHT MAIN VIDEO WINDOW: x=640 to x=1920, y=180 to y=780 — large protected dark video zone\n"
             "  - BOTTOM TIMELINE: y=780 to y=990, full width — timeline image zones and conclusion\n"
@@ -2112,21 +2287,21 @@ def translate_prompt_for_imagen(
         ),
         "框訊・數據分析": (
             "LAYOUT GRID (1920x1080 canvas):\n"
-            "  - HEADLINE BAND: y=0 to y=180 (top 17%), full width — single-line headline\n"
+            "  - HEADLINE BAND: x=0 to x=1920, y=0 to y=180 (top 17%), full width — HEADLINE TEXT ONLY, no side object, no table, no card, no icon, no image box\n"
             "  - LEFT DATA ZONE: x=0 to x=1000, y=180 to y=990 — narrative text cards and data blocks stacked vertically\n"
             "  - RIGHT ZONE: x=1000 to x=1920, y=180 to y=780 — expert portrait zone (protected) + quote card\n"
             "  - TICKER SAFE ZONE: x=1332 to x=1920, y=990 to y=1080 — background only"
         ),
         "框訊・流程關係": (
             "LAYOUT GRID (1920x1080 canvas):\n"
-            "  - HEADLINE BAND: y=0 to y=180 (top 17%), full width — single-line headline\n"
+            "  - HEADLINE BAND: x=0 to x=1920, y=0 to y=180 (top 17%), full width — HEADLINE TEXT ONLY, no side object, no table, no card, no icon, no image box\n"
             "  - LEFT RELATION DIAGRAM: x=0 to x=880, y=180 to y=990 — role groups, nodes, connector lines\n"
             "  - RIGHT MAIN VIDEO WINDOW: x=880 to x=1920, y=180 to y=780 — large protected dark video zone\n"
             "  - TICKER SAFE ZONE: x=1332 to x=1920, y=990 to y=1080 — background only"
         ),
         "記者說新聞": (
             "LAYOUT GRID (1920x1080 canvas):\n"
-            "  - HEADLINE BAND: y=0 to y=160 (top 15%), full width — headline\n"
+            "  - HEADLINE BAND: x=0 to x=1920, y=0 to y=160 (top 15%), full width — HEADLINE TEXT ONLY, no side object, no table, no card, no icon, no image box\n"
             "  - LEFT COLUMN: x=0 to x=880, y=160 to y=990 — main facts, dates, rankings, images, maps, or data\n"
             "  - RIGHT COLUMN: x=880 to x=1920, y=160 to y=990 — explanation, reasons, interpretation, bullet points\n"
             "  - TICKER SAFE ZONE (LOCKED): x=1332 to x=1920, y=990 to y=1080 — ABSOLUTE background only, this is a hardware overlay area"
@@ -2151,6 +2326,16 @@ CRITICAL — HEADLINE LINE BREAK RULES:
 - If the headline has TWO lines, they MUST be rendered as two separate stacked lines in the top headline band. Never merge them into one line.
 - State each line explicitly: "Headline line 1: [text]" then "Headline line 2: [text]" and add "These two lines must be stacked vertically. Do not merge. Do not reflow."
 - Font size must be large enough that both lines fit without wrapping further.
+
+CRITICAL — HEADLINE BAND ISOLATION:
+- The headline band is a clean full-width top zone for headline text only.
+- No table, card, color block, image placeholder, ROLL/VCR window, icon, badge, speech bubble, logo box, chart, or decorative object may appear inside it or beside the headline.
+- All non-headline content must start below the headline band y-boundary described in the layout grid.
+
+CRITICAL — QUOTE MARK REMOVAL:
+- Quotation marks in the source script are editor markup for color emphasis only.
+- Render the words inside quotes with color emphasis, but do NOT draw the quote symbols.
+- Never render visible ", “, ”, 「, 」, 『, 』 anywhere in the final image.
 
 CRITICAL — SPEECH BUBBLE / DIALOGUE BOX RULES:
 - Each person gets their OWN separate dialogue card. Never repeat the same quote under two different names.
@@ -2280,6 +2465,8 @@ The headline band is at the very top of the canvas.
 記者說新聞: top 12-15% of canvas.
 
 ABSOLUTE RULE: The headline band contains HEADLINE TEXT ONLY.
+The headline must be the first visual object at the top edge. No object may sit beside it, above it, behind it as a separate panel, or share the same horizontal band.
+The headline uses the full headline band width. Side tables, side cards, logo boxes, photo boxes, icon badges, and any decorative blocks must start below the headline band.
 The following are STRICTLY FORBIDDEN inside or overlapping the headline band:
 - Image zones (white rectangles, photo placeholders)
 - ROLL/VCR video windows (black rectangles)
@@ -2291,6 +2478,12 @@ The following are STRICTLY FORBIDDEN inside or overlapping the headline band:
 
 All non-headline elements MUST start below the headline band boundary.
 Violation of this rule destroys the broadcast layout.
+
+[QUOTE MARK VISIBILITY LOCK]
+Double quotes, Chinese quotation marks, and decorative quote marks are editor markup only.
+They are used to choose highlight color for the enclosed words.
+After highlighting, render the enclosed words WITHOUT any visible quote marks.
+Never draw ", “, ”, 「, 」, 『, 』 around headline or body text.
 """.strip()
 
 
@@ -2328,6 +2521,11 @@ def _extract_approved_text_whitelist(script: str) -> List[str]:
 
     text = script
 
+    text = re.sub(r"<\s*定圖[^>]*>", "\n", text)
+    text = re.sub(r"[（(]\s*小字警語\s+([^）)]+)[）)]", r"\1", text)
+    text = re.sub(r"\[\s*蓋章(?:效果)?[^\]]*\]", "", text)
+    text = re.sub(r"\[\s*筆刷(?:效果)?[^\]]*\]", "", text)
+
     # 移除素材保護區標籤，避免把「定國防部外觀照」這種素材說明當成要上字。
     for tag in _extract_asset_zones(text):
         text = text.replace(tag, "\n")
@@ -2343,11 +2541,12 @@ def _extract_approved_text_whitelist(script: str) -> List[str]:
         "\n",
         text,
     )
+    text = re.sub(r"<\s*黑人影\s*>", "\n", text)
 
     text = text.replace("<", "").replace(">", "")
     text = text.replace("【", "").replace("】", "")
     text = text.replace("[", "").replace("]", "")
-    text = text.replace('"', "")
+    text = re.sub(r'["“”「」『』]', "", text)
     text = text.replace("---", "\n")
 
     # v20.6.7 BUG FIX：
@@ -2383,9 +2582,12 @@ def _extract_approved_text_whitelist(script: str) -> List[str]:
 def _strip_director_syntax(text: str) -> str:
     """把新聞台控制語法轉成語意提示，不把素材/版型標籤當成要畫出的文字。"""
     text = normalize_editor_asset_lines(text or "")
+    text = re.sub(r"<\s*定圖[^>]*>", " protected empty photo/logo asset zone ", text)
+    text = re.sub(r"<\s*黑人影\s*>", " black human silhouette icon ", text)
+    text = re.sub(r"[（(]\s*小字警語\s+([^）)]+)[）)]", r" small warning notice \1 ", text)
     for tag in _extract_asset_zones(text):
         text = text.replace(tag, " protected empty photo/video asset zone ")
-    text = re.sub(r"\([^\)]*(?:色塊|對話框|數據框|筆刷|蓋章|icon|假人|打卡|打卡符號|地點字)[^\)]*\)", " broadcast graphic module ", text)
+    text = re.sub(r"\([^\)]*(?:色塊|對話框|數據框|筆刷|蓋章|警語|icon|假人|打卡|打卡符號|地點字)[^\)]*\)", " broadcast graphic module ", text)
     text = re.sub(r"[#＃][\w\u4e00-\u9fff]+", " broadcast effect module ", text)
     text = re.sub(r"\[(TYPE|FRAME|TITLE|BODY|STYLE|LAYOUT|HEADLINE|CONTENT SCRIPT|DIRECTOR NOTES)[^\]]*\]", " ", text, flags=re.I)
     text = text.replace("<", "").replace(">", "")
@@ -2405,7 +2607,8 @@ def _clean_visual_text(text: str) -> str:
     t = text.strip()
     for tag in _extract_asset_zones(t):
         t = t.replace(tag, " ")
-    t = re.sub(r"\([^)]*(?:色塊|方框|對話框|數據框|筆刷|蓋章|icon|假人|打卡|打卡符號|地點字)[^)]*\)", " ", t)
+    t = re.sub(r"[（(]\s*小字警語\s+([^）)]+)[）)]", r"\1", t)
+    t = re.sub(r"\([^)]*(?:色塊|方框|對話框|數據框|筆刷|蓋章|警語|icon|假人|打卡|打卡符號|地點字)[^)]*\)", " ", t)
     t = re.sub(r"^[\-—=]{2,}$", " ", t)
     t = t.replace("標題：", "").replace("標題:", "").replace("標題=", "")
     t = t.replace("大標：", "").replace("大標:", "").replace("大標=", "")
@@ -2415,6 +2618,50 @@ def _clean_visual_text(text: str) -> str:
     t = t.replace("[", "").replace("]", "")
     t = t.replace('"', "").replace("“", "").replace("”", "")
     return " ".join(t.split()).strip()
+
+
+def _clean_headline_lines_for_prompt(title: str) -> List[str]:
+    """保留 headline 換行；只清符號，不把多行壓成一行。"""
+    lines: List[str] = []
+    for raw in (title or "").splitlines():
+        line = _clean_visual_text(raw)
+        if line:
+            lines.append(line)
+    if not lines and title:
+        one = _clean_visual_text(title)
+        if one:
+            lines.append(one)
+    return lines
+
+
+def _headline_prompt_block(title: str, frame_type: str, headline_mode: str) -> str:
+    """輸出不互相矛盾的 headline 指令；標大框明確逐行鎖死。"""
+    lines = _clean_headline_lines_for_prompt(title)
+    ui_frame = normalize_frame_for_ui(frame_type)
+    if ui_frame == "標大框":
+        if len(lines) == 1:
+            split = _smart_split_two_line_headline(lines[0])
+            lines = [_clean_visual_text(split[0]), _clean_visual_text(split[1])]
+        line1 = lines[0] if len(lines) > 0 else ""
+        line2 = lines[1] if len(lines) > 1 else ""
+        return f"""
+HEADLINE MODE: FORCE_TWO_LINES
+Headline line 1: {line1}
+Headline line 2: {line2}
+Render exactly two stacked headline lines in the top mega headline band.
+Do not merge the two lines into one line.
+Do not reflow, rebalance, or compress them into a single row.
+Line 1 and line 2 must both remain in the top 40-48% headline wall.
+The headline wall must contain headline text only; all cards, tables, icons, image boxes, and ROLL/VCR windows must start below it.
+""".strip()
+
+    one = " ".join(lines)
+    return f"""
+HEADLINE MODE: {headline_mode}
+Headline text: {one or '未提供'}
+Render the headline once only at the top.
+The top headline band must contain headline text only; all cards, tables, icons, image boxes, and ROLL/VCR windows must start below it.
+""".strip()
 
 
 def _split_script_blocks(script: str) -> List[List[str]]:
@@ -2545,8 +2792,11 @@ def build_visual_token_compiler_block(script: str, frame_type: str, headline_mod
     """
     parsed = parse_user_script(script)
     parsed.title = compile_headline_text_v242(script, frame_type, parsed.title)
-    title = _clean_visual_text(parsed.title)
+    title_block = _headline_prompt_block(parsed.title, frame_type, headline_mode)
+    headline_line_set = set(_clean_headline_lines_for_prompt(parsed.title))
     asset_zones = _extract_asset_zones(script)
+    stamp_targets = extract_explicit_stamp_targets(script)
+    small_warning_texts = extract_small_warning_texts(script)
     blocks = _split_script_blocks(script)
 
     text_groups: List[List[str]] = []
@@ -2570,7 +2820,11 @@ def build_visual_token_compiler_block(script: str, frame_type: str, headline_mod
                 continue
             if stripped.startswith(("主標題：", "主標題:", "大標題：", "大標題:", "標題：")):
                 continue
+            if _clean_visual_text(stripped) in headline_line_set:
+                continue
             if is_asset_protection_tag(stripped):
+                continue
+            if re.search(r"[（(]\s*小字警語\s+[^）)]+[）)]", stripped):
                 continue
             if re.fullmatch(r"[-—=]{3,}", stripped):
                 continue
@@ -2588,8 +2842,11 @@ def build_visual_token_compiler_block(script: str, frame_type: str, headline_mod
         if clean_lines:
             text_groups.append(clean_lines[:6])
 
-    # (#定xxx圖) 人物肖像區，單獨識別
-    person_zone_tags = [z for z in asset_zones if re.search(r'[#＃]定.{1,12}圖', z)]
+    # (#定xxx圖) / (定人) / (定人頭) 人物肖像區，單獨識別
+    person_zone_tags = [
+        z for z in asset_zones
+        if re.search(r'[#＃]定.{1,12}圖', z) or re.search(r'定人(?:頭)?', z)
+    ]
     portrait_tags = [z for z in asset_zones if any(k in z for k in ["常如山圖", "工程師圖", "特助圖", "人圖", "人物圖"])]
     _ROLL_VCR_KW = ("roll", "vcr", "開框roll", "開框ROLL")
     roll_tags = [z for z in asset_zones if any(k in z.lower() for k in _ROLL_VCR_KW)]
@@ -2627,10 +2884,15 @@ def build_visual_token_compiler_block(script: str, frame_type: str, headline_mod
             break  # 找到了 ROLL 但沒位置，停止掃描，roll_position 保持 None
 
     text_group_lines: List[str] = []
-    for idx, lines in enumerate(text_groups, start=1):
-        # 每個 group 獨立輸出，保留換行，讓 Imagen 理解分組
+    for lines in text_groups:
+        # 每個 group 獨立輸出，保留換行，讓 Imagen 理解分組；不加數字避免模型誤繪編號
         group_content = "\n  ".join(lines)
-        text_group_lines.append(f"- Content zone {idx}:\n  {group_content}")
+        text_group_lines.append(f"- News content block:\n  {group_content}")
+
+    for warning in small_warning_texts:
+        text_group_lines.append(
+            f"- Small warning notice:\n  {warning}\n  Render this as small warning typography; do not render the words 小字警語."
+        )
 
     if not text_group_lines:
         text_group_lines.append("- No body text module provided. Keep the content area clean and do not invent text.")
@@ -2661,10 +2923,18 @@ def build_visual_token_compiler_block(script: str, frame_type: str, headline_mod
         _pname = re.sub(r'[（(）)#＃]', '', tag).strip()
         _pname = re.sub(r'^定', '', _pname)
         _pname = re.sub(r'圖$', '', _pname)
-        visual_zone_lines.append(
-            f"- Person portrait zone {i} ({_pname}): blank white rectangle for post-production portrait of {_pname}. "
-            f"Name label '{_pname}' goes BELOW or BESIDE this zone, never inside. Interior must be 100% blank."
-        )
+        if re.search(r'定人(?:頭)?\s*[+＋]\s*色塊', tag):
+            visual_zone_lines.append(
+                f"- Person headshot-with-label module {i}: blank portrait/headshot rectangle for post-production person image. "
+                f"Attach a solid broadcast color-block text label BELOW or BESIDE the portrait frame. "
+                f"The color block may contain approved nearby name/title text, but must stay outside the portrait interior. "
+                f"Portrait interior must be 100% blank: no text, no icon, no fake face."
+            )
+        else:
+            visual_zone_lines.append(
+                f"- Person portrait/headshot zone {i}: blank white rectangle for post-production person image. "
+                f"Any name/title label goes BELOW or BESIDE this zone, never inside. Interior must be 100% blank."
+            )
     for i, tag in enumerate(other_tags, start=1):
         hint = _asset_zone_spatial_hint(tag, i, len(asset_zones), frame_type)
         visual_zone_lines.append(
@@ -2672,6 +2942,11 @@ def build_visual_token_compiler_block(script: str, frame_type: str, headline_mod
             f"Render as AXIS-ALIGNED white/light-gray empty rectangle. "
             f"Interior: ZERO content — no text, no label, no icon, no fake photo. "
             f"Editor will insert real photo here after generation."
+        )
+    for target in stamp_targets:
+        visual_zone_lines.append(
+            f"- Stamp effect target: render the exact text '{target}' as a stamp-style emphasis badge or stamped color block. "
+            f"Delete the tag text 蓋章. Keep the stamp OUTSIDE every protected image/ROLL/photo zone."
         )
 
     if not visual_zone_lines:
@@ -2727,7 +3002,7 @@ Do not render any instruction labels, module labels, placeholder labels, debug l
 
 Headline treatment:
 - Use {headline_mode}.
-- Exact headline text: {title or '未提供'}
+{title_block}
 - Place the headline at the top only.
 - Make it visually dominant, like an on-air Taiwanese TV news mega headline.
 - Use layered Chinese broadcast typography: thick strokes, outline, shadow, strong contrast.
@@ -2946,6 +3221,10 @@ def _asset_zone_prompt(asset_zones: List[str], transparent_holes: bool) -> str:
         raw = tag or ""
         pos_match = re.search(r'(左上|左下|右上|右下|左|右|中|上|下)', raw)
         pos_text = f", requested position: {pos_match.group(1)}" if pos_match else ""
+        if re.search(r'定人(?:頭)?\s*[+＋]\s*色塊', raw):
+            return f"- Protected person headshot-with-label module {index}{pos_text}: blank portrait/headshot rectangle plus attached broadcast color-block text label outside the portrait interior."
+        if re.search(r'定人(?:頭)?', raw):
+            return f"- Protected person headshot/portrait zone {index}{pos_text}: blank person image rectangle, no visible marker text."
         if re.search(r'ROLL|roll|VCR|vcr|開框', raw):
             return f"- Protected dark footage window {index}{pos_text}: large black/dark empty rectangle, clean broadcast frame, absolutely no visible marker text."
         return f"- Photo/document protected zone {index}{pos_text}: clean white/light neutral empty post-production rectangle, no visible marker text."
@@ -2975,8 +3254,10 @@ def _scrub_editor_marker_words_for_image_prompt(text: str) -> str:
     if not text:
         return ""
     t = text
-    t = re.sub(r"\[[^\]]*(?:ROLL|VCR|圖|圖片|定圖|開框)[^\]]*\]", "protected media zone", t, flags=re.IGNORECASE)
-    t = re.sub(r"\([^)]*(?:ROLL|VCR|圖|圖片|定圖|開框|LINE截圖)[^)]*\)", "protected media zone", t, flags=re.IGNORECASE)
+    t = re.sub(r"<\s*定圖[^>]*>", "protected media zone", t)
+    t = re.sub(r"\[[^\]]*(?:ROLL|VCR|圖|圖片|定圖|定人|定人頭|開框)[^\]]*\]", "protected media zone", t, flags=re.IGNORECASE)
+    t = re.sub(r"\([^)]*(?:ROLL|VCR|圖|圖片|定圖|定人|定人頭|開框|LINE截圖)[^)]*\)", "protected media zone", t, flags=re.IGNORECASE)
+    t = re.sub(r"<\s*黑人影\s*>", "black human silhouette icon", t)
     replacements = {
         "ROLL/VCR": "video window",
         "ROLL": "video window",
@@ -2987,6 +3268,9 @@ def _scrub_editor_marker_words_for_image_prompt(text: str) -> str:
         "開框ROLL": "video window",
         "開框": "video window",
         "定圖": "photo placeholder",
+        "定人頭": "person headshot placeholder",
+        "定人": "person portrait placeholder",
+        "黑人影": "black human silhouette icon",
         "圖片": "photo placeholder",
         "圖區": "media zone",
         "打卡logo": "attached location badge",
@@ -3059,6 +3343,7 @@ Preferred placement: upper-right corner or right edge of the largest media frame
 Do not place the location badge in a separate column, separate card, text list, headline band, or body paragraph.
 Do not create a standalone location icon. The pin must be physically integrated with the attached badge.
 """.strip()
+    headline_block = _headline_prompt_block(parsed.title, frame_type, headline_mode)
     title = _strip_director_syntax(parsed.title)[:60]
     visual_compiler = _scrub_editor_marker_words_for_image_prompt(build_visual_token_compiler_block(script, frame_type, headline_mode))
     grammar_block = _scrub_editor_marker_words_for_image_prompt(build_taiwan_news_cg_grammar(script, frame_type))
@@ -3078,16 +3363,17 @@ Do not create a standalone location icon. The pin must be physically integrated 
             "Render ONLY the exact Traditional Chinese text in the approved whitelist below. "
             "Use the whitelist as the only source of readable Chinese typography. "
             "Never add, rewrite, translate, summarize, or invent any text. "
+            "If source words were originally inside double quotes or Chinese quote marks, render those words in a highlight color but remove all visible quote symbols. "
             "Never duplicate names, numbers, keywords, or headline fragments. "
             "Do not omit approved text from the user-provided layout. "
             "Do not render internal instruction labels, debug labels, card labels, image-box labels, source-marker labels, prompt syntax, or English labels. "
             "If spacing is tight, reduce font size, line spacing, or rearrange modules instead of deleting text. "
             "No fake Chinese glyphs, no random numbers, no random English letters. "
-            "CRITICAL: Do NOT add any quotation marks, single quotes, double quotes, or decorative punctuation around words. "
-            "All quotation marks have been removed from the source text intentionally. Never re-add them."
+            "CRITICAL: Do NOT add any quotation marks, single quotes, double quotes, Chinese quote marks, or decorative punctuation around words. "
+            "All quotation marks have been removed from the source text intentionally. Never re-add them. Quoted source text means color emphasis only, not visible quote glyphs."
         )
         text_whitelist_block = f"Approved Traditional Chinese text whitelist:\n{whitelist}"
-        negative_text = "no extra text beyond whitelist, no missing approved text, no internal labels, no section labels, no card labels, no image box labels, no placeholder labels, no source marker labels, no compiler words, no debug labels, no fake photo inside blank image zones, no icon inside blank image zones, no text inside blank image zones, no gibberish Chinese, no fake characters, no random English letters, no random numbers, no self-added quotation marks, no decorative quotes around words"
+        negative_text = "no extra text beyond whitelist, no missing approved text, no internal labels, no section labels, no card labels, no image box labels, no placeholder labels, no source marker labels, no compiler words, no debug labels, no fake photo inside blank image zones, no icon inside blank image zones, no text inside blank image zones, no gibberish Chinese, no fake characters, no random English letters, no random numbers, no self-added quotation marks, no decorative quotes around words, no visible double quote glyphs, no visible Chinese quote marks"
 
     safe_zone_policy = (
         "Keep the bottom-right 588x90 ticker-safe zone as background texture only, no cards, no icons, no text, no decoration."
@@ -3147,7 +3433,13 @@ Professional Taiwanese TV news CG, 1920x1080 horizontal 16:9, polished broadcast
 Layout intent: {_scrub_editor_marker_words_for_image_prompt(_frame_visual_intent(frame_type, reporter_subtype, headline_mode))}.
 {frame_style_lock}
 
-Headline area: {headline_mode}; title meaning reference only: {title or 'news headline'}.
+Headline requirement:
+{headline_block}
+Headline band isolation lock:
+- Treat the top headline band as a full-width protected title-only zone.
+- It may contain only the headline typography and its direct text outline/shadow.
+- No table, side card, color block, person icon, photo placeholder, ROLL/VCR window, badge, speech bubble, logo box, chart, lower-third, or decorative object may sit beside, above, behind, or inside the headline band.
+- All modules and media placeholders must start below the headline band.
 Background and color strategy: {_background_visual_directive(script, frame_type, style_name, background_mode)}.
 
 ASSET PROTECTION ZONE POLICY:
@@ -3156,7 +3448,12 @@ ASSET PROTECTION ZONE POLICY:
 
 Broadcast module translation:
 - (#色塊) / (色塊) means information card blocks.
-- (#蓋章) means a stamp-style emphasis module placed OUTSIDE all asset zones; do not infer stamp from ordinary text.
+- <定圖 xxx> means a protected blank image/logo zone for post-production insertion. Example: <定圖 東吳Logo> reserves a clean blank logo/photo space; do not render the words 定圖 or 東吳Logo inside the blank zone.
+- (定人) / (定人頭) means a protected blank person portrait/headshot zone for post-production.
+- (定人+色塊) / (定人頭+色塊) means a protected blank person portrait/headshot zone with an attached broadcast color-block text label below or beside it. The label is outside the portrait interior; never put words inside the person image placeholder.
+- <黑人影> means a black human silhouette icon, like a simple TV news person-shadow pictogram. Do not render the literal words 黑人影 or the angle brackets.
+- (#蓋章) / (蓋章) means a stamp-style emphasis treatment applied to the nearest adjacent text line, preferably the previous non-empty line. Never render the literal word 蓋章. Keep the stamp OUTSIDE all asset zones.
+- (小字警語 xxx) means render only xxx as a small warning notice; 小字警語 is a style instruction and must not appear as visible text.
 - BRUSH EFFECT IS EXPLICIT ONLY: create brush strokes ONLY when the user explicitly writes (#筆刷), (筆刷), #筆刷, ---筆刷, or 筆刷效果.
 - If no explicit brush tag exists in the user script, brush strokes are forbidden.
 - Do not convert <文字>, 「quotes」, numbers, conflict words, emotional words, or body text into brush strokes.
@@ -3185,7 +3482,7 @@ No horror, no distorted faces, no creepy anatomy, no surreal artifacts. Real pho
 """.strip()
 
     negative_prompt = f"""
-{negative_text}{negative_fx}, {negative_style_terms}, no standalone location pin, no standalone map pin, no detached location badge, no separate location badge card, no location badge in text columns, no location badge inside headline band, no Gemini sparkle mark, no AI sparkle icon, no four-point star, no decorative star, no bottom-right sparkle, no unrequested ticker, no unrequested breaking news strip, no unrequested LIVE tag, no unrequested channel logo, no unrequested timestamp, no unrequested lower-third, no unrequested bottom news bar, no watermark, no QR code, no extra news facts, no creepy face, no distorted human, no horror mood, no movie poster, no magazine cover, no social media post, no clutter, no overlapping text on asset zones, no labels inside empty asset zones, no editor marker words, no marker labels inside media boxes, no brackets, no prompt syntax, no UI debug labels, no stamp or brush overlapping protected image boxes, no duplicated headline text, no duplicated names, no repeated keywords, no concatenating body text into headline
+{negative_text}{negative_fx}, {negative_style_terms}, no side table in headline band, no side card in headline band, no color block beside headline, no object beside headline, no image placeholder in headline band, no icon in headline band, no badge in headline band, no speech bubble in headline band, no standalone location pin, no standalone map pin, no detached location badge, no separate location badge card, no location badge in text columns, no location badge inside headline band, no Gemini sparkle mark, no AI sparkle icon, no four-point star, no decorative star, no bottom-right sparkle, no unrequested ticker, no unrequested breaking news strip, no unrequested LIVE tag, no unrequested channel logo, no unrequested timestamp, no unrequested lower-third, no unrequested bottom news bar, no watermark, no QR code, no extra news facts, no creepy face, no distorted human, no horror mood, no movie poster, no magazine cover, no social media post, no clutter, no overlapping text on asset zones, no labels inside empty asset zones, no editor marker words, no marker labels inside media boxes, no brackets, no prompt syntax, no UI debug labels, no stamp or brush overlapping protected image boxes, no duplicated headline text, no duplicated names, no repeated keywords, no concatenating body text into headline
 """.strip()
 
     return {
@@ -3774,9 +4071,11 @@ with st.expander("📘 v17 圖區不壓圖規則", expanded=False):
             [
                 {"語法": "[圖] / [圖-左主]", "系統動作": "建立硬留白圖區", "成品處理": "刪除標籤，只留空洞"},
                 {"語法": "(#定忠孝橋) / (定國防部外觀照)", "系統動作": "視為指定真實素材保護區", "成品處理": "刪除標籤，只留後製素材框"},
+                {"語法": "<定圖 東吳Logo>", "系統動作": "建立指定 Logo / 圖片留白區", "成品處理": "刪除尖括號與指令文字，只留後製素材框"},
                 {"語法": "(圖片) / (#開框roll) / (LINE截圖)", "系統動作": "建立影片/照片/截圖保護框", "成品處理": "框內完全空白，不放文字或 icon"},
                 {"語法": "(色塊)", "系統動作": "生成資訊卡", "成品處理": "刪除指令文字"},
                 {"語法": "(對話框)", "系統動作": "生成說話框", "成品處理": "刪除指令文字"},
+                {"語法": "<黑人影>", "系統動作": "生成黑色剪影人物 icon", "成品處理": "刪除尖括號與指令文字，只留下剪影 icon"},
                 {"語法": "#筆刷", "系統動作": "生成筆刷強調", "成品處理": "刪除指令文字"},
             ]
         )
